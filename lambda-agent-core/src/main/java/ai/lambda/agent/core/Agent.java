@@ -81,15 +81,6 @@ public final class Agent {
             // Check if the model requested any tool calls.
             List<ToolCall> calls = response.getToolCalls();
 
-            // DEBUG: log for iteration, assistant text, and tool calls.
-            System.out.println("[lambda-agent-core] iteration " + iteration + ", assistantText='" + assistant.getContent() + "', toolCalls=" + (calls == null ? 0 : calls.size()));
-            if (calls != null) {
-                for (ToolCall c : calls) {
-                    System.out.println("  -> ToolCall name=" + c.getName()
-                            + " args=" + c.getArgumentsJson());
-                }
-            }
-
             if (calls == null || calls.isEmpty()) {
                 // No tools requested -> we're done
                 sessionStore.save(session);
