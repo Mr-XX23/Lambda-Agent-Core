@@ -11,27 +11,28 @@
     </parent>
 
     <artifactId>lambda-ai-core</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <dependencies>
-        <!-- JSON (for now: simple org.json; can replace with Jackson later) -->
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
             <version>20240303</version>
         </dependency>
-        <!-- HTTP client (Java 11+ has HttpClient, but we can still add OkHttp/Apache later if needed) -->
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
                 <configuration>
-                    <source>15</source>
-                    <target>15</target>
+                    <release>16</release>
                 </configuration>
             </plugin>
         </plugins>
     </build>
+
 </project>

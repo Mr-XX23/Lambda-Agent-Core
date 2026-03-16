@@ -6,7 +6,7 @@ import ai.lambda.agent.core.*;
 import java.io.IOException;
 import java.util.Scanner;
 
-public final class SimpleChatExampleWithTool {
+public final class SimpleChatExampleOnly {
 
     public static void main(String[] args) throws IOException {
         // STEP: 1

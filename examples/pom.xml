@@ -13,7 +13,10 @@
     <packaging>pom</packaging>
 
     <modules>
-        <module>simple-chat</module>
+        <module>simple-chat-only</module>
+        <module>simple-chat-with-JSONL-file-based-session-storage</module>
+        <module>simple-chat-with-tools</module>
+        <module>todo-agent</module>
     </modules>
 
 </project>

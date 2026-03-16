@@ -138,9 +138,6 @@ public final class GoogleModelClient implements ModelClient {
                 throw new RuntimeException("Gemini error: " + response.statusCode() + " " + response.body());
             }
 
-            // DEBUG : print the raw response from Gemini for visibility
-            System.out.println("[GoogleModelClient] Gemini raw response: " + response.body());
-
             JSONObject body = new JSONObject(response.body());
             JSONArray candidates = body.optJSONArray("candidates");
             if (candidates == null || candidates.isEmpty()) {

@@ -6,7 +6,7 @@ import ai.lambda.ai.core.Role;
 import ai.lambda.ai.core.ToolCall;
 import ai.lambda.ai.core.ToolSchema;
 
-import java.util.Collections;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +17,7 @@ public final class Agent {
     private final SessionStore sessionStore;
     private final Map<String, AgentTool> toolRegistry;
     private final List<ToolSchema> toolSchemas;
+    private final List<AgentEventListener> listeners = new ArrayList<>();
 
     public Agent(AgentConfig config, SessionStore sessionStore) {
         this.config = config;
@@ -37,6 +38,10 @@ public final class Agent {
         return tools.stream()
                 .map(t -> new ToolSchema(t.getName(), t.getDescription(), t.getJsonSchema()))
                 .toList();
+    }
+
+    public void addListener(AgentEventListener listener) {
+        this.listeners.add(listener);
     }
 
     public AgentResult run(String sessionId, String userInput) {
@@ -62,12 +67,16 @@ public final class Agent {
         // Core agent loop: call model, possibly execute tools, repeat.
         for (int iteration  = 0; iteration  < config.getMaxIterations(); iteration++) {
 
+            for (AgentEventListener l : listeners) l.onIterationStart(iteration);
+
             // Call the model with the current conversation and tool schemas.
             ChatResponse  response = config.getModelClient().chat(session.getMessages(), toolSchemas);
 
             // Add the assistant's response to the conversation.
             Message  assistant = response.getAssistantMessage();
             session.getMessages().add(assistant);
+
+            for (AgentEventListener l : listeners) l.onAssistantMessage(assistant);
 
             // Check if the model requested any tool calls.
             List<ToolCall> calls = response.getToolCalls();
@@ -115,6 +124,8 @@ public final class Agent {
                         session
                 );
 
+                for (AgentEventListener l : listeners) l.onToolStart(call, ctx);
+
                 // Execute the tool and get the result.
                 ToolResult result;
 
@@ -123,9 +134,18 @@ public final class Agent {
                     // Execute the tool and get the result.
                     result = tool.execute(ctx);
 
+                    for (AgentEventListener l : listeners) l.onToolEnd(call, result);
+
                 } catch (Exception e) {
 
-                    // On error, send a textual error back to the model.
+                    for (AgentEventListener l : listeners) l.onToolError(call, e);
+
+                    // Check the configured tool error strategy.
+                    if (config.getToolErrorStrategy() == ToolErrorStrategy.THROW) {
+                        throw new RuntimeException("Tool '" + call.getName() + "' failed", e);
+                    }
+
+                    // SEND_TO_MODEL: send a textual error back to the model.
                     String errorContent = "[lambda-agent-core] Tool '" + call.getName() + "' failed: " + e.getMessage();
 
                     // Add a TOOL message with the error content.

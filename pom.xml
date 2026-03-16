@@ -12,8 +12,10 @@
     <modules>
         <module>lambda-ai-core</module>
         <module>lambda-agent-core</module>
-        <module>examples</module>
         <module>examples/simple-chat-only</module>
+        <module>examples/simple-chat-with-tools</module>
+        <module>examples/simple-chat-with-JSONL-file-based-session-storage</module>
+        <module>examples/todo-agent</module>
     </modules>
 
     <properties>
