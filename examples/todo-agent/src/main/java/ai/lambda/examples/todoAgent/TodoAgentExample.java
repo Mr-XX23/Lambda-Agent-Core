@@ -29,7 +29,7 @@ public class TodoAgentExample {
         }
 
         // 2. Create model client
-        var modelClient = new GoogleModelClient(apiKey, "gemini-2.0-flash");
+        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // 3. Create tools
         List<AgentTool> tools = List.of(new AddTodoTool(), new ListTodosTool());

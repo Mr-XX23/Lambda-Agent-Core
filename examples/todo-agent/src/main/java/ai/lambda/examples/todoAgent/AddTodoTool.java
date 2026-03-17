@@ -55,7 +55,11 @@ public final class AddTodoTool implements AgentTool {
         AgentSession session = context.getSession();
         Map<String, Object> metadata = session.getMetadata();
 
-        List<String> todos = (List<String>) metadata.computeIfAbsent("todos", k -> new ArrayList<String>());
+        List<String> todos = (List<String>) metadata.get("todos");
+        if (todos == null) {
+            todos = new ArrayList<>();
+            metadata.put("todos", todos);
+        }
         todos.add(task);
 
         return ToolResult.of("Added todo: \"" + task + "\". Total todos: " + todos.size());

@@ -45,7 +45,7 @@ public final class ListTodosTool implements AgentTool {
         List<String> todos = (List<String>) metadata.get("todos");
 
         if (todos == null || todos.isEmpty()) {
-            return ToolResult.of("No todos found. The list is empty.");
+            return ToolResult.of("No todos found. Your list is currently empty.");
         }
 
         String formatted = IntStream.range(0, todos.size())
