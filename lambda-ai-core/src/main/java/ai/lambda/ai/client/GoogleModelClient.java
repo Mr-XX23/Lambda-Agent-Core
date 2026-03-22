@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class GoogleModelClient implements ModelClient {
 
@@ -30,97 +31,162 @@ public final class GoogleModelClient implements ModelClient {
     }
 
     @Override
-    public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+    public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta) {
 
         try {
-            JSONObject requestBody = new JSONObject();
-            JSONArray contents = new JSONArray();
+            JSONObject requestBody = buildRequestBody(messages, tools);
 
-            for (Message m : messages) {
+            String url = "https://generativelanguage.googleapis.com/v1beta/models/"
+                    + URLEncoder.encode(modelName, StandardCharsets.UTF_8)
+                    + ":streamGenerateContent?alt=sse&key="
+                    + URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
 
-                JSONObject c = new JSONObject();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
+                    .build();
 
-                String geminiRole = (m.getRole() == Role.ASSISTANT) ? "model" : "user";
-                c.put("role", geminiRole);
+            // We use ofLines() to process the SSE stream line by line.
+            HttpResponse<java.util.stream.Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
 
-                JSONArray parts = new JSONArray();
+            if (response.statusCode() >= 400) {
+                // Read the body if possible for error message, but ofLines makes it tricky if it's already a stream.
+                throw new RuntimeException("Gemini streaming error: " + response.statusCode());
+            }
 
-                if (m.getRole() == Role.TOOL) {
-                    // 1) Format Tool Results strictly as Gemini functionResponse
-                    JSONObject functionResponse = new JSONObject();
-                    functionResponse.put("name", m.getToolCallName() != null ? m.getToolCallName() : "unknown");
+            StringBuilder fullText = new StringBuilder();
+            List<ToolCall> allToolCalls = new ArrayList<>();
 
-                    JSONObject responseObj = new JSONObject();
-                    responseObj.put("result", m.getContent());
-                    functionResponse.put("response", responseObj);
-
-                    JSONObject part = new JSONObject();
-                    part.put("functionResponse", functionResponse);
-                    parts.put(part);
-                } else {
-                    // 2) Format normal text
-                    if (!m.getContent().isEmpty()) {
-                        JSONObject textPart = new JSONObject();
-                        textPart.put("text", m.getContent());
-                        parts.put(textPart);
-                    }
-
-                    // 3) Reconstruct Model's past function calls into the history
-                    if (m.getRole() == Role.ASSISTANT && !m.getToolCalls().isEmpty()) {
-                        for (ToolCall tc : m.getToolCalls()) {
-                            JSONObject functionCall = new JSONObject();
-                            functionCall.put("name", tc.getName());
-                            functionCall.put("args", new JSONObject(tc.getArgumentsJson()));
-
-                            JSONObject part = new JSONObject();
-                            part.put("functionCall", functionCall);
-                            parts.put(part);
+            response.body().forEach(line -> {
+                if (line.startsWith("data: ")) {
+                    String jsonData = line.substring(6);
+                    JSONObject chunk = new JSONObject(jsonData);
+                    
+                    // Gemini stream produces many candidates, usually just one per chunk.
+                    JSONArray candidates = chunk.optJSONArray("candidates");
+                    if (candidates != null && !candidates.isEmpty()) {
+                        JSONObject first = candidates.getJSONObject(0);
+                        JSONObject content = first.optJSONObject("content");
+                        if (content != null) {
+                            JSONArray parts = content.optJSONArray("parts");
+                            if (parts != null) {
+                                for (int i = 0; i < parts.length(); i++) {
+                                    JSONObject p = parts.getJSONObject(i);
+                                    if (p.has("text")) {
+                                        String delta = p.getString("text");
+                                        fullText.append(delta);
+                                        if (onDelta != null) {
+                                            onDelta.accept(delta);
+                                        }
+                                    } else if (p.has("functionCall")) {
+                                        JSONObject fc = p.getJSONObject("functionCall");
+                                        String name = fc.optString("name", "");
+                                        JSONObject args = fc.optJSONObject("args");
+                                        String argsJson = args != null ? args.toString() : "{}";
+                                        allToolCalls.add(new ToolCall(UUID.randomUUID().toString(), name, argsJson));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-                // Gemini throws 400 Bad Request if parts array is completely empty
-                if (parts.isEmpty()) {
-                    JSONObject emptyText = new JSONObject();
-                    emptyText.put("text", " ");
-                    parts.put(emptyText);
+            });
+
+            Message assistantMessage = new Message(Role.ASSISTANT, fullText.toString(), null);
+            return new ChatResponse(assistantMessage, allToolCalls);
+
+        } catch (IOException | InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Failed to call Gemini streaming", e);
+        }
+    }
+
+    private JSONObject buildRequestBody(List<Message> messages, List<ToolSchema> tools) {
+        JSONObject requestBody = new JSONObject();
+        JSONArray contents = new JSONArray();
+
+        for (Message m : messages) {
+            JSONObject c = new JSONObject();
+            String geminiRole = (m.getRole() == Role.ASSISTANT) ? "model" : "user";
+            c.put("role", geminiRole);
+
+            JSONArray parts = new JSONArray();
+
+            if (m.getRole() == Role.TOOL) {
+                JSONObject functionResponse = new JSONObject();
+                functionResponse.put("name", m.getToolCallName() != null ? m.getToolCallName() : "unknown");
+                JSONObject responseObj = new JSONObject();
+                responseObj.put("result", m.getContent());
+                functionResponse.put("response", responseObj);
+
+                JSONObject part = new JSONObject();
+                part.put("functionResponse", functionResponse);
+                parts.put(part);
+            } else {
+                if (!m.getContent().isEmpty()) {
+                    JSONObject textPart = new JSONObject();
+                    textPart.put("text", m.getContent());
+                    parts.put(textPart);
                 }
 
-                c.put("parts", parts);
-                contents.put(c);
-            }
+                if (m.getRole() == Role.ASSISTANT && !m.getToolCalls().isEmpty()) {
+                    for (ToolCall tc : m.getToolCalls()) {
+                        JSONObject functionCall = new JSONObject();
+                        functionCall.put("name", tc.getName());
+                        functionCall.put("args", new JSONObject(tc.getArgumentsJson()));
 
-            requestBody.put("contents", contents);
-
-            // 2) tools -> Gemini functionDeclarations
-            if (tools != null && !tools.isEmpty()) {
-
-                JSONArray toolArray = new JSONArray();
-                JSONObject toolObj = new JSONObject();
-                JSONArray functionDecls = new JSONArray();
-
-                for (ToolSchema ts : tools) {
-                    JSONObject fn = new JSONObject();
-                    fn.put("name", ts.getName());
-                    fn.put("description", ts.getDescription());
-                    // used as "parameters".
-                    if (ts.getJsonSchema() != null && !ts.getJsonSchema().isBlank()) {
-                        fn.put("parameters", new JSONObject(ts.getJsonSchema()));
+                        JSONObject part = new JSONObject();
+                        part.put("functionCall", functionCall);
+                        parts.put(part);
                     }
-
-                    functionDecls.put(fn);
                 }
-
-                toolObj.put("functionDeclarations", functionDecls);
-                toolArray.put(toolObj);
-                requestBody.put("tools", toolArray);
-
-                // Enable function calling in "AUTO" mode so the model can decide.
-                JSONObject toolConfig = new JSONObject();
-                JSONObject functionCallingConfig = new JSONObject();
-                functionCallingConfig.put("mode", "AUTO");
-                toolConfig.put("functionCallingConfig", functionCallingConfig);
-                requestBody.put("toolConfig", toolConfig);
             }
+            if (parts.isEmpty()) {
+                JSONObject emptyText = new JSONObject();
+                emptyText.put("text", " ");
+                parts.put(emptyText);
+            }
+
+            c.put("parts", parts);
+            contents.put(c);
+        }
+
+        requestBody.put("contents", contents);
+
+        if (tools != null && !tools.isEmpty()) {
+            JSONArray toolArray = new JSONArray();
+            JSONObject toolObj = new JSONObject();
+            JSONArray functionDecls = new JSONArray();
+
+            for (ToolSchema ts : tools) {
+                JSONObject fn = new JSONObject();
+                fn.put("name", ts.getName());
+                fn.put("description", ts.getDescription());
+                if (ts.getJsonSchema() != null && !ts.getJsonSchema().isBlank()) {
+                    fn.put("parameters", new JSONObject(ts.getJsonSchema()));
+                }
+                functionDecls.put(fn);
+            }
+
+            toolObj.put("functionDeclarations", functionDecls);
+            toolArray.put(toolObj);
+            requestBody.put("tools", toolArray);
+
+            JSONObject toolConfig = new JSONObject();
+            JSONObject functionCallingConfig = new JSONObject();
+            functionCallingConfig.put("mode", "AUTO");
+            toolConfig.put("functionCallingConfig", functionCallingConfig);
+            requestBody.put("toolConfig", toolConfig);
+        }
+        return requestBody;
+    }
+
+    @Override
+    public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+
+        try {
+            JSONObject requestBody = buildRequestBody(messages, tools);
 
             String url = "https://generativelanguage.googleapis.com/v1beta/models/"
                     + URLEncoder.encode(modelName, StandardCharsets.UTF_8)
@@ -147,11 +213,9 @@ public final class GoogleModelClient implements ModelClient {
             JSONObject first = candidates.getJSONObject(0);
             JSONObject content = first.optJSONObject("content");
 
-            // 3) Extract functionCall(s) and/or text from parts
             List<ToolCall> toolCalls = new ArrayList<>();
             StringBuilder assistantText = new StringBuilder();
 
-            // Only process parts if content actually exists and has parts
             if( content != null ) {
                 JSONArray parts = content.optJSONArray("parts");
                 if ( parts != null ) {
@@ -162,10 +226,7 @@ public final class GoogleModelClient implements ModelClient {
                             String name = fc.optString("name", "");
                             JSONObject args = fc.optJSONObject("args");
                             String argsJson = args != null ? args.toString() : "{}";
-
-                            // Gemini doesn't return an id; we generate one.
-                            String id = UUID.randomUUID().toString();
-                            toolCalls.add(new ToolCall(id, name, argsJson));
+                            toolCalls.add(new ToolCall(UUID.randomUUID().toString(), name, argsJson));
                         } else if (p.has("text")) {
                             assistantText.append(p.optString("text", ""));
                         }

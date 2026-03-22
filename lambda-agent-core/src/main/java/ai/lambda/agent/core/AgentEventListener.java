@@ -18,4 +18,7 @@ public interface AgentEventListener {
 
     // Fired if a tool throws an exception
     default void onToolError(ToolCall call, Exception error) {}
+
+    // Fired when a new text chunk is received from the model (streaming)
+    default void onAssistantDelta(String delta) {}
 }

@@ -69,8 +69,14 @@ public final class Agent {
 
             for (AgentEventListener l : listeners) l.onIterationStart(iteration);
 
-            // Call the model with the current conversation and tool schemas.
-            ChatResponse  response = config.getModelClient().chat(session.getMessages(), toolSchemas);
+            // Call the model with the current conversation and tool schemas, using streaming.
+            ChatResponse response = config.getModelClient().streamChat(
+                    session.getMessages(),
+                    toolSchemas,
+                    delta -> {
+                        for (AgentEventListener l : listeners) l.onAssistantDelta(delta);
+                    }
+            );
 
             // Add the assistant's response to the conversation.
             Message  assistant = response.getAssistantMessage();

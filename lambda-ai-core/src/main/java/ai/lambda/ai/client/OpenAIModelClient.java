@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
 import java.util.List;
 import java.util.Objects;
 
@@ -70,6 +71,14 @@ public class OpenAIModelClient implements ModelClient {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Failed to call OpenAI", e);
         }
+    }
+
+    @Override
+    public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta) {
+        // For now, streaming is not supported for OpenAI in this implementation.
+        // We'll just fall back to the synchronous chat and fire one big delta at the end,
+        // or just throw for now to be honest about support.
+        throw new UnsupportedOperationException("Streaming not yet implemented for OpenAI.");
     }
 
     private static String toOpenAiRole(Role role) {
