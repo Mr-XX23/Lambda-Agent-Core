@@ -17,6 +17,7 @@
         <module>simple-chat-with-JSONL-file-based-session-storage</module>
         <module>simple-chat-with-tools</module>
         <module>todo-agent</module>
+        <module>simple-streaming-chat</module>
     </modules>
 
 </project>
