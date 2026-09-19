@@ -18,6 +18,7 @@
         <module>simple-chat-with-tools</module>
         <module>todo-agent</module>
         <module>simple-streaming-chat</module>
+        <module>software-delivery-agent</module>
     </modules>
 
 </project>

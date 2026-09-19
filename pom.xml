@@ -17,6 +17,7 @@
         <module>examples/simple-chat-with-tools</module>
         <module>examples/simple-chat-with-JSONL-file-based-session-storage</module>
         <module>examples/todo-agent</module>
+        <module>examples/software-delivery-agent</module>
     </modules>
 
     <properties>
