@@ -24,6 +24,10 @@ public interface AgentTool {
         return ToolPolicy.unrestricted();
     }
 
+    default java.util.Set<ToolCapability> getCapabilities() {
+        return getPolicy().capabilities();
+    }
+
     default ToolArgumentValidator getArgumentValidator() {
         return argumentsJson -> {};
     }

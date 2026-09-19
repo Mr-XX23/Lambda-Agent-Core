@@ -44,7 +44,8 @@ public final class JsonlCheckpointStore implements CheckpointStore {
                     json.getInt("nextStep"),
                     WorkflowStatus.valueOf(json.getString("status")),
                     state,
-                    json.optString("error", null)));
+                    json.optString("error", null),
+                    json.optLong("version", 0)));
         } catch (Exception error) {
             throw new RuntimeException("Failed to load checkpoint " + executionId, error);
         }
@@ -60,10 +61,12 @@ public final class JsonlCheckpointStore implements CheckpointStore {
             json.put("workflowName", checkpoint.workflowName());
             json.put("nextStep", checkpoint.nextStep());
             json.put("status", checkpoint.status().name());
+            json.put("version", checkpoint.version());
             json.put("state", new JSONObject(checkpoint.state()));
             if (checkpoint.error() != null) {
                 json.put("error", checkpoint.error());
             }
+
             temporary = Files.createTempFile(storageDir, "." + target.getFileName(), ".tmp");
             Files.writeString(temporary, json.toString(), StandardCharsets.UTF_8);
             try {

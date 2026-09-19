@@ -151,6 +151,11 @@ public final class Agent {
                     continue;
                 }
                 ToolPolicy policy = tool.getPolicy();
+                if (!config.getToolPermissionPolicy().allowed(sessionId, tool, tool.getCapabilities())) {
+                    session.getMessages().add(new Message(Role.TOOL,
+                            "Tool '" + call.getName() + "' was denied by permission policy.", call.getId()));
+                    continue;
+                }
                 if (policy.requiresApproval()
                         && !config.getToolApprovalHandler().approve(sessionId, call)) {
                     session.getMessages().add(new Message(Role.TOOL,
