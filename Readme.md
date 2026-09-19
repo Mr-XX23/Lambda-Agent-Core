@@ -37,6 +37,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
+- **🛂 Tool Governance:** Typed input parsing, composable permission decisions, audit events, and bounded file, process, and network tools protect execution paths.
 
 ## 💻 Quick Start
 
