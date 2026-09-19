@@ -46,10 +46,7 @@ public final class FileReadTool implements AgentTool {
         JSONObject args = new JSONObject(context.getArgumentsJson());
         String filePathStr = args.getString("filePath");
 
-        Path path = root.resolve(filePathStr).normalize();
-        if (!path.startsWith(root)) {
-            throw new SecurityException("File path is outside the configured root");
-        }
+        Path path = resolveSafePath(filePathStr, false);
         if (!Files.exists(path)) {
             throw new Exception("File does not exist: " + filePathStr);
         }
@@ -59,6 +56,22 @@ public final class FileReadTool implements AgentTool {
 
         String content = Files.readString(path);
         return ToolResult.of(content);
+    }
+
+    private Path resolveSafePath(String filePath, boolean allowMissing) throws Exception {
+        Path candidate = root.resolve(filePath).normalize();
+        if (!candidate.startsWith(root)) {
+            throw new SecurityException("File path is outside the configured root");
+        }
+        if (!Files.exists(candidate) && !allowMissing) {
+            throw new Exception("File does not exist: " + filePath);
+        }
+        Path realRoot = root.toRealPath();
+        Path realPath = candidate.toRealPath();
+        if (!realPath.startsWith(realRoot)) {
+            throw new SecurityException("File path resolves outside the configured root");
+        }
+        return realPath;
     }
 
     @Override

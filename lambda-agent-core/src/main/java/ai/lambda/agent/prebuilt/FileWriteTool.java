@@ -37,10 +37,26 @@ public final class FileWriteTool implements AgentTool {
     }
     @Override public ToolResult execute(ToolInvocationContext context) throws Exception {
         JSONObject args = new JSONObject(context.getArgumentsJson());
-        Path path = root.resolve(args.getString("filePath")).normalize();
-        if (!path.startsWith(root)) throw new SecurityException("File path is outside the configured root");
+        Path path = resolveSafePath(args.getString("filePath"));
         Files.createDirectories(path.getParent() == null ? root : path.getParent());
         Files.writeString(path, args.getString("content"));
         return ToolResult.of("Wrote " + args.getString("filePath"));
+    }
+
+    private Path resolveSafePath(String filePath) throws Exception {
+        Path candidate = root.resolve(filePath).normalize();
+        if (!candidate.startsWith(root)) throw new SecurityException("File path is outside the configured root");
+        Path realRoot = root.toRealPath();
+        Path existingParent = candidate.getParent() == null ? root : candidate.getParent();
+        Files.createDirectories(existingParent);
+        Path realParent = existingParent.toRealPath();
+        if (!realParent.startsWith(realRoot)) {
+            throw new SecurityException("File path resolves outside the configured root");
+        }
+        Path target = realParent.resolve(candidate.getFileName()).normalize();
+        if (Files.exists(target) && !target.toRealPath().startsWith(realRoot)) {
+            throw new SecurityException("File path resolves outside the configured root");
+        }
+        return target;
     }
 }
