@@ -10,6 +10,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.time.Instant;
+import java.util.concurrent.TimeoutException;
+import org.json.JSONObject;
 
 public final class Agent {
 
@@ -29,14 +33,30 @@ public final class Agent {
     private static Map<String, AgentTool> buildToolRegistry(List<AgentTool> tools) {
         Map<String, AgentTool> map = new HashMap<>();
         for (AgentTool tool : tools) {
-            map.put(tool.getName(), tool);
+            if (tool == null || tool.getName() == null || tool.getName().isBlank()) {
+                throw new IllegalArgumentException("Every tool must have a non-blank name");
+            }
+            if (map.put(tool.getName(), tool) != null) {
+                throw new IllegalArgumentException("Duplicate tool name: " + tool.getName());
+            }
         }
         return Map.copyOf(map);
     }
 
     private static List<ToolSchema> buildToolSchemas(List<AgentTool> tools) {
         return tools.stream()
-                .map(t -> new ToolSchema(t.getName(), t.getDescription(), t.getJsonSchema()))
+                .map(t -> {
+                    String schema = t.getJsonSchema();
+                    if (schema == null || schema.isBlank()) {
+                        throw new IllegalArgumentException("Tool '" + t.getName() + "' must define a JSON schema");
+                    }
+                    try {
+                        new JSONObject(schema);
+                    } catch (RuntimeException e) {
+                        throw new IllegalArgumentException("Tool '" + t.getName() + "' has invalid JSON schema", e);
+                    }
+                    return new ToolSchema(t.getName(), t.getDescription(), schema);
+                })
                 .toList();
     }
 
@@ -45,6 +65,13 @@ public final class Agent {
     }
 
     public AgentResult run(String sessionId, String userInput) {
+        return run(sessionId, userInput, new CancellationToken());
+    }
+
+    public AgentResult run(String sessionId, String userInput, CancellationToken cancellationToken) {
+        String runId = UUID.randomUUID().toString();
+        Instant deadline = Instant.now().plus(config.getRunTimeout());
+        for (AgentEventListener listener : listeners) listener.onRunStart(runId, sessionId);
 
         AgentSession session = sessionStore.loadOrCreate(sessionId);
 
@@ -66,6 +93,10 @@ public final class Agent {
 
         // Core agent loop: call model, possibly execute tools, repeat.
         for (int iteration  = 0; iteration  < config.getMaxIterations(); iteration++) {
+            cancellationToken.throwIfCancelled();
+            if (Instant.now().isAfter(deadline)) {
+                throw new RuntimeException(new TimeoutException("Agent run exceeded " + config.getRunTimeout()));
+            }
 
             for (AgentEventListener l : listeners) l.onIterationStart(iteration);
 
@@ -77,20 +108,31 @@ public final class Agent {
                         for (AgentEventListener l : listeners) l.onAssistantDelta(delta);
                     }
             );
+            for (AgentEventListener listener : listeners) listener.onModelResponse(response);
 
             // Add the assistant's response to the conversation.
-            Message  assistant = response.getAssistantMessage();
+            Message assistant = response.getAssistantMessage();
+            List<ToolCall> calls = response.getToolCalls();
+            if (calls != null && !calls.isEmpty() && assistant.getToolCalls().isEmpty()) {
+                assistant = new Message(
+                        assistant.getRole(),
+                        assistant.getContent(),
+                        assistant.getToolCallId(),
+                        assistant.getToolCallName(),
+                        calls
+                );
+            }
             session.getMessages().add(assistant);
 
             for (AgentEventListener l : listeners) l.onAssistantMessage(assistant);
 
             // Check if the model requested any tool calls.
-            List<ToolCall> calls = response.getToolCalls();
-
             if (calls == null || calls.isEmpty()) {
                 // No tools requested -> we're done
                 sessionStore.save(session);
-                return new AgentResult(assistant.getContent(), session);
+                AgentResult result = new AgentResult(assistant.getContent(), session, runId, iteration + 1);
+                for (AgentEventListener listener : listeners) listener.onRunEnd(result);
+                return result;
             }
 
             // Execute each requested tool and add TOOL messages.
@@ -120,6 +162,10 @@ public final class Agent {
                         call.getArgumentsJson(),
                         session
                 );
+                if (call.getArgumentsJson() != null
+                        && call.getArgumentsJson().length() > config.getMaxToolArgumentLength()) {
+                    throw new IllegalArgumentException("Tool arguments exceed configured limit");
+                }
 
                 for (AgentEventListener l : listeners) l.onToolStart(call, ctx);
 
@@ -173,9 +219,11 @@ public final class Agent {
 
         // Safety stop: too many iterations.
         sessionStore.save(session);
-        return new AgentResult(
+        AgentResult result = new AgentResult(
                 "[lambda-agent-core] Stopped after max iterations.",
-                session
+                session, runId, config.getMaxIterations()
         );
+        for (AgentEventListener listener : listeners) listener.onRunEnd(result);
+        return result;
     }
 }

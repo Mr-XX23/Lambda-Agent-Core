@@ -4,6 +4,9 @@ import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.ToolCall;
 
 public interface AgentEventListener {
+    default void onRunStart(String runId, String sessionId) {}
+    default void onRunEnd(AgentResult result) {}
+    default void onModelResponse(ai.lambda.ai.core.ChatResponse response) {}
     // Fired when the agent begins a new model call loop
     default void onIterationStart(int iteration) {}
 

@@ -23,11 +23,12 @@ If you want to build an AI assistant in Java that can read local files, call you
 
 ## ✨ Key Features
 
-- **🔌 Pluggable LLM Providers:** Abstracted `ModelClient` interface. Currently supports Google Gemini (OpenAI and Anthropic coming soon).
+- **🔌 Pluggable LLM Providers:** Abstracted `ModelClient` interface with Gemini and OpenAI clients. OpenAI currently uses a synchronous request internally when the agent asks for streaming.
 - **🛠️ Autonomous Tool Calling:** Define tools using standard Java interfaces. The agent automatically decides when to call them and maps JSON arguments to your Java methods.
 - **🧠 Persistent Memory:** Built-in `JsonlSessionStore` ensures your AI agent never loses context, remembering conversations even after JVM restarts.
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
+- **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
 
 ## 💻 Quick Start
 
