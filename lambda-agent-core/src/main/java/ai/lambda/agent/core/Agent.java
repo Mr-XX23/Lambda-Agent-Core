@@ -89,6 +89,7 @@ public final class Agent {
 
         AgentSession session = sessionStore.loadOrCreate(sessionId);
 
+        try {
         // Ensure system message is present once at the start.
         if (session.getMessages().isEmpty()) {
             session.getMessages().add(new Message(
@@ -276,6 +277,14 @@ public final class Agent {
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
         return result;
+        } catch (RuntimeException | Error failure) {
+            try {
+                sessionStore.save(session);
+            } catch (RuntimeException persistenceFailure) {
+                failure.addSuppressed(persistenceFailure);
+            }
+            throw failure;
+        }
     }
 
     private void audit(String sessionId, ToolCall call, AgentTool tool, String action, String reason) {
