@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.Set;
 
 public final class NetworkFetchTool implements AgentTool {
+    private static final int MAX_RESPONSE_BYTES = 32 * 1024;
     private final Set<String> allowedHosts;
     public NetworkFetchTool(Set<String> allowedHosts) { this.allowedHosts = Set.copyOf(allowedHosts); }
     @Override public String getName() { return "fetch_url"; }
@@ -28,6 +29,10 @@ public final class NetworkFetchTool implements AgentTool {
         URI uri = (URI) getTypedInputSchema().parse(context.getArgumentsJson());
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10)).GET().build();
-        return ToolResult.of(client.send(request, HttpResponse.BodyHandlers.ofString()).body());
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.body().length > MAX_RESPONSE_BYTES) {
+            throw new SecurityException("Network response exceeds the 32 KiB sandbox limit");
+        }
+        return ToolResult.of(new String(response.body()));
     }
 }

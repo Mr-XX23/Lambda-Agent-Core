@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public final class ProcessTool implements AgentTool {
+    private static final int MAX_OUTPUT_BYTES = 16 * 1024;
     private final Set<String> allowedCommands;
 
     public ProcessTool(Set<String> allowedCommands) {
@@ -35,6 +36,10 @@ public final class ProcessTool implements AgentTool {
             process.destroyForcibly();
             throw new IllegalStateException("Process timed out");
         }
-        return ToolResult.of(new String(process.getInputStream().readAllBytes()));
+        byte[] output = process.getInputStream().readNBytes(MAX_OUTPUT_BYTES + 1);
+        if (output.length > MAX_OUTPUT_BYTES) {
+            throw new SecurityException("Process output exceeds the 16 KiB sandbox limit");
+        }
+        return ToolResult.of(new String(output));
     }
 }
