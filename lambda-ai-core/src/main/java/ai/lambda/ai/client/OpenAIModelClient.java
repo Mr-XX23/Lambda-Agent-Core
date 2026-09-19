@@ -13,6 +13,8 @@ import java.util.function.Consumer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class OpenAIModelClient implements ModelClient {
 
@@ -30,54 +32,7 @@ public class OpenAIModelClient implements ModelClient {
     public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
         try {
 
-            JSONObject requestBody = new JSONObject();
-            requestBody.put("model", model);
-
-            JSONArray jsonMessages = new JSONArray();
-            for (Message m : messages) {
-                JSONObject jm = new JSONObject();
-                jm.put("role", toOpenAiRole(m.getRole()));
-                if (m.getRole() == Role.TOOL) {
-                    jm.put("content", m.getContent());
-                    if (m.getToolCallId() != null) {
-                        jm.put("tool_call_id", m.getToolCallId());
-                    }
-                } else {
-                    jm.put("content", m.getContent());
-                    if (m.getRole() == Role.ASSISTANT && !m.getToolCalls().isEmpty()) {
-                        JSONArray calls = new JSONArray();
-                        for (ToolCall call : m.getToolCalls()) {
-                            JSONObject function = new JSONObject();
-                            function.put("name", call.getName());
-                            function.put("arguments", call.getArgumentsJson());
-                            JSONObject toolCall = new JSONObject();
-                            toolCall.put("id", call.getId());
-                            toolCall.put("type", "function");
-                            toolCall.put("function", function);
-                            calls.put(toolCall);
-                        }
-                        jm.put("tool_calls", calls);
-                    }
-                }
-                jsonMessages.put(jm);
-            }
-            requestBody.put("messages", jsonMessages);
-            if (tools != null && !tools.isEmpty()) {
-                JSONArray jsonTools = new JSONArray();
-                for (ToolSchema tool : tools) {
-                    JSONObject function = new JSONObject();
-                    function.put("name", tool.getName());
-                    function.put("description", tool.getDescription());
-                    function.put("parameters", tool.getJsonSchema() == null || tool.getJsonSchema().isBlank()
-                            ? new JSONObject()
-                            : new JSONObject(tool.getJsonSchema()));
-                    JSONObject jsonTool = new JSONObject();
-                    jsonTool.put("type", "function");
-                    jsonTool.put("function", function);
-                    jsonTools.put(jsonTool);
-                }
-                requestBody.put("tools", jsonTools);
-            }
+            JSONObject requestBody = buildRequestBody(messages, tools, false);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.openai.com/v1/chat/completions"))
@@ -115,7 +70,8 @@ public class OpenAIModelClient implements ModelClient {
             }
 
             Message assistantMessage = new Message(Role.ASSISTANT, content, null, null, toolCalls);
-            return new ChatResponse(assistantMessage, toolCalls);
+            return new ChatResponse(assistantMessage, toolCalls,
+                    toFinishReason(first.optString("finish_reason", "")), parseUsage(body));
 
         } catch (IOException e) {
             throw new RuntimeException("Failed to call OpenAI", e);
@@ -127,11 +83,134 @@ public class OpenAIModelClient implements ModelClient {
 
     @Override
     public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta) {
-        ChatResponse response = chat(messages, tools);
-        if (onDelta != null && !response.getAssistantMessage().getContent().isEmpty()) {
-            onDelta.accept(response.getAssistantMessage().getContent());
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.openai.com/v1/chat/completions"))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            buildRequestBody(messages, tools, true).toString(), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<java.util.stream.Stream<String>> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() >= 400) {
+                throw new RuntimeException("OpenAI streaming error: " + response.statusCode());
+            }
+            StringBuilder text = new StringBuilder();
+            Map<Integer, StreamToolCall> calls = new LinkedHashMap<>();
+            FinishReason finishReason = FinishReason.UNKNOWN;
+            ModelUsage usage = ModelUsage.empty();
+            try (var lines = response.body()) {
+                for (String line : (Iterable<String>) lines::iterator) {
+                    if (!line.startsWith("data: ")) continue;
+                    String data = line.substring(6).trim();
+                    if ("[DONE]".equals(data)) break;
+                    JSONObject chunk = new JSONObject(data);
+                    usage = parseUsage(chunk);
+                    JSONArray choices = chunk.optJSONArray("choices");
+                    if (choices == null || choices.isEmpty()) continue;
+                    JSONObject choice = choices.getJSONObject(0);
+                    finishReason = toFinishReason(choice.optString("finish_reason", ""));
+                    JSONObject delta = choice.optJSONObject("delta");
+                    if (delta == null) continue;
+                    String piece = delta.optString("content", "");
+                    if (!piece.isEmpty()) {
+                        text.append(piece);
+                        if (onDelta != null) onDelta.accept(piece);
+                    }
+                    JSONArray toolDeltas = delta.optJSONArray("tool_calls");
+                    if (toolDeltas != null) {
+                        for (int i = 0; i < toolDeltas.length(); i++) {
+                            JSONObject item = toolDeltas.getJSONObject(i);
+                            int index = item.optInt("index", i);
+                            StreamToolCall call = calls.computeIfAbsent(index,
+                                    ignored -> new StreamToolCall(item.optString("id", ""), "", new StringBuilder()));
+                            if (item.has("id")) call.id = item.getString("id");
+                            JSONObject function = item.optJSONObject("function");
+                            if (function != null) {
+                                if (function.has("name")) call.name = function.getString("name");
+                                call.arguments.append(function.optString("arguments", ""));
+                            }
+                        }
+                    }
+                }
+            }
+            List<ToolCall> toolCalls = calls.values().stream()
+                    .map(call -> new ToolCall(call.id, call.name, call.arguments.toString()))
+                    .toList();
+            return new ChatResponse(new Message(Role.ASSISTANT, text.toString(), null, null, toolCalls),
+                    toolCalls, finishReason, usage);
+        } catch (IOException error) {
+            throw new RuntimeException("Failed to call OpenAI streaming", error);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Failed to call OpenAI streaming", error);
         }
-        return response;
+    }
+
+    private JSONObject buildRequestBody(List<Message> messages, List<ToolSchema> tools, boolean stream) {
+        JSONObject requestBody = new JSONObject().put("model", model).put("stream", stream);
+        if (stream) {
+            requestBody.put("stream_options", new JSONObject().put("include_usage", true));
+        }
+        JSONArray jsonMessages = new JSONArray();
+        for (Message message : messages) {
+            JSONObject json = new JSONObject().put("role", toOpenAiRole(message.getRole()))
+                    .put("content", message.getContent());
+            if (message.getRole() == Role.TOOL && message.getToolCallId() != null) {
+                json.put("tool_call_id", message.getToolCallId());
+            }
+            if (message.getRole() == Role.ASSISTANT && !message.getToolCalls().isEmpty()) {
+                JSONArray toolCalls = new JSONArray();
+                for (ToolCall call : message.getToolCalls()) {
+                    toolCalls.put(new JSONObject().put("id", call.getId()).put("type", "function")
+                            .put("function", new JSONObject().put("name", call.getName())
+                                    .put("arguments", call.getArgumentsJson())));
+                }
+                json.put("tool_calls", toolCalls);
+            }
+            jsonMessages.put(json);
+        }
+        requestBody.put("messages", jsonMessages);
+        if (tools != null && !tools.isEmpty()) {
+            JSONArray declarations = new JSONArray();
+            for (ToolSchema tool : tools) {
+                declarations.put(new JSONObject().put("type", "function").put("function",
+                        new JSONObject().put("name", tool.getName()).put("description", tool.getDescription())
+                                .put("parameters", new JSONObject(tool.getJsonSchema()))));
+            }
+            requestBody.put("tools", declarations);
+        }
+        return requestBody;
+    }
+
+    private static ModelUsage parseUsage(JSONObject body) {
+        JSONObject usage = body.optJSONObject("usage");
+        if (usage == null) return ModelUsage.empty();
+        return new ModelUsage(usage.optLong("prompt_tokens", 0),
+                usage.optLong("completion_tokens", 0), usage.optLong("total_tokens", 0));
+    }
+
+    private static FinishReason toFinishReason(String reason) {
+        return switch (reason) {
+            case "stop" -> FinishReason.STOP;
+            case "tool_calls", "function_call" -> FinishReason.TOOL_CALLS;
+            case "length" -> FinishReason.LENGTH;
+            case "content_filter" -> FinishReason.CONTENT_FILTER;
+            default -> FinishReason.UNKNOWN;
+        };
+    }
+
+    private static final class StreamToolCall {
+        private String id;
+        private String name;
+        private final StringBuilder arguments;
+
+        private StreamToolCall(String id, String name, StringBuilder arguments) {
+            this.id = id;
+            this.name = name;
+            this.arguments = arguments;
+        }
     }
 
     private static String toOpenAiRole(Role role) {
