@@ -23,9 +23,9 @@ If you want to build an AI assistant in Java that can read local files, call you
 
 ## ✨ Key Features
 
-- **🔌 Pluggable LLM Providers:** Abstracted `ModelClient` interface with Gemini and OpenAI clients. OpenAI currently uses a synchronous request internally when the agent asks for streaming.
+- **🔌 Pluggable LLM Providers:** Abstracted `ModelClient` interface with Gemini and OpenAI clients, normalized usage/finish metadata, streaming tool-call assembly, and provider contract tests.
 - **🛠️ Autonomous Tool Calling:** Define tools using standard Java interfaces. The agent automatically decides when to call them and maps JSON arguments to your Java methods.
-- **🧠 Persistent Memory:** Built-in `JsonlSessionStore` ensures your AI agent never loses context, remembering conversations even after JVM restarts.
+- **🧠 Persistent Memory:** Built-in `JsonlSessionStore` ensures your AI agent never loses context, with JDBC and Redis checkpoint stores for durable, versioned workflow state.
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
@@ -38,6 +38,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🌿 Reliable Workflow Fan-out:** Main workflows support parallel branches with branch-local retries, cancellation propagation, persisted branch state, joins, and resumable approval steps.
 - **📊 Observability:** Trace IDs propagate through agent runs and workflows, with pluggable span exporters, OTLP/HTTP export hooks, and metric recording.
 - **🚀 Deployment Integrations:** The JDK HTTP bridge supports authenticated, bounded agent/workflow requests and SSE result responses; the optional Spring Boot starter provides configuration and dependency-injected REST exposure.
+- **📦 Release Readiness:** Public extension contracts, compatibility guidance, production examples, security policy, CI quality gates, dependency checks, and manual version/tag release automation are included.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
@@ -105,6 +106,29 @@ Public extension contracts and compatibility guarantees are documented in
 collected in [Examples](docs/Examples.md), with deployment details in
 [Deployment Integrations](docs/DeploymentIntegrations.md) and operational guidance in
 [Production Operations](docs/ProductionOperations.md).
+
+## ✅ Project status
+
+The core production roadmap is implemented across the merged milestones:
+
+- provider streaming and response normalization;
+- resumable, versioned, parallel, approval-aware workflows;
+- JDBC/Postgres-compatible and Redis checkpoint persistence;
+- typed tool inputs, capability permissions, audit events, and sandbox limits;
+- trace context, metrics, OTLP export hooks, HTTP, Spring Boot, and MCP boundaries;
+- contract documentation, examples, security guidance, CI checks, and release automation.
+
+Run the full validation locally with:
+
+```bash
+mvn -B clean verify
+```
+
+The optional API compatibility profile can be run against a released baseline with:
+
+```bash
+mvn -B -DcompatibilityBaseline=<version> verify
+```
 
 ---
 <div align="center">
