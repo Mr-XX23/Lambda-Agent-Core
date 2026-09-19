@@ -6,6 +6,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -48,59 +50,64 @@ public final class GoogleModelClient implements ModelClient {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
                     .build();
 
-            // We use ofLines() to process the SSE stream line by line.
-            HttpResponse<java.util.stream.Stream<String>> response = httpClient.send(request, HttpResponse.BodyHandlers.ofLines());
+            HttpResponse<java.io.InputStream> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (java.io.InputStream body = response.body()) {
+                if (response.statusCode() >= 400) {
+                    String errorBody = new String(body.readAllBytes(), StandardCharsets.UTF_8);
+                    throw new RuntimeException("Gemini streaming error: " + response.statusCode()
+                            + " " + errorBody);
+                }
 
-            if (response.statusCode() >= 400) {
-                // Read the body if possible for error message, but ofLines makes it tricky if it's already a stream.
-                throw new RuntimeException("Gemini streaming error: " + response.statusCode());
-            }
+                StringBuilder fullText = new StringBuilder();
+                List<ToolCall> allToolCalls = new ArrayList<>();
+                AtomicReference<ModelUsage> usage = new AtomicReference<>(ModelUsage.empty());
+                AtomicReference<FinishReason> finishReason = new AtomicReference<>(FinishReason.UNKNOWN);
 
-            StringBuilder fullText = new StringBuilder();
-            List<ToolCall> allToolCalls = new ArrayList<>();
-            AtomicReference<ModelUsage> usage = new AtomicReference<>(ModelUsage.empty());
-            AtomicReference<FinishReason> finishReason = new AtomicReference<>(FinishReason.UNKNOWN);
-
-            response.body().forEach(line -> {
-                if (line.startsWith("data: ")) {
-                    String jsonData = line.substring(6);
-                    JSONObject chunk = new JSONObject(jsonData);
-                    usage.set(parseUsage(chunk));
-                    
-                    // Gemini stream produces many candidates, usually just one per chunk.
-                    JSONArray candidates = chunk.optJSONArray("candidates");
-                    if (candidates != null && !candidates.isEmpty()) {
-                        JSONObject first = candidates.getJSONObject(0);
-                        finishReason.set(toFinishReason(first.optString("finishReason", ""), false));
-                        JSONObject content = first.optJSONObject("content");
-                        if (content != null) {
-                            JSONArray parts = content.optJSONArray("parts");
-                            if (parts != null) {
-                                for (int i = 0; i < parts.length(); i++) {
-                                    JSONObject p = parts.getJSONObject(i);
-                                    if (p.has("text")) {
-                                        String delta = p.getString("text");
-                                        fullText.append(delta);
-                                        if (onDelta != null) {
-                                            onDelta.accept(delta);
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(body, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.startsWith("data: ")) {
+                            JSONObject chunk = new JSONObject(line.substring(6));
+                            usage.set(parseUsage(chunk));
+                            JSONArray candidates = chunk.optJSONArray("candidates");
+                            if (candidates != null && !candidates.isEmpty()) {
+                                JSONObject first = candidates.getJSONObject(0);
+                                finishReason.set(toFinishReason(
+                                        first.optString("finishReason", ""), false));
+                                JSONObject content = first.optJSONObject("content");
+                                if (content != null) {
+                                    JSONArray parts = content.optJSONArray("parts");
+                                    if (parts != null) {
+                                        for (int i = 0; i < parts.length(); i++) {
+                                            JSONObject p = parts.getJSONObject(i);
+                                            if (p.has("text")) {
+                                                String delta = p.getString("text");
+                                                fullText.append(delta);
+                                                if (onDelta != null) {
+                                                    onDelta.accept(delta);
+                                                }
+                                            } else if (p.has("functionCall")) {
+                                                JSONObject fc = p.getJSONObject("functionCall");
+                                                String name = fc.optString("name", "");
+                                                JSONObject args = fc.optJSONObject("args");
+                                                String argsJson = args != null ? args.toString() : "{}";
+                                                allToolCalls.add(new ToolCall(
+                                                        UUID.randomUUID().toString(), name, argsJson));
+                                            }
                                         }
-                                    } else if (p.has("functionCall")) {
-                                        JSONObject fc = p.getJSONObject("functionCall");
-                                        String name = fc.optString("name", "");
-                                        JSONObject args = fc.optJSONObject("args");
-                                        String argsJson = args != null ? args.toString() : "{}";
-                                        allToolCalls.add(new ToolCall(UUID.randomUUID().toString(), name, argsJson));
                                     }
                                 }
                             }
                         }
                     }
                 }
-            });
 
-            Message assistantMessage = new Message(Role.ASSISTANT, fullText.toString(), null);
-            return new ChatResponse(assistantMessage, allToolCalls,
-                    toFinishReason(finishReason.get(), !allToolCalls.isEmpty()), usage.get());
+                Message assistantMessage = new Message(Role.ASSISTANT, fullText.toString(), null);
+                return new ChatResponse(assistantMessage, allToolCalls,
+                        toFinishReason(finishReason.get(), !allToolCalls.isEmpty()), usage.get());
+            }
 
         } catch (IOException e) {
             throw new RuntimeException("Failed to call Gemini streaming", e);

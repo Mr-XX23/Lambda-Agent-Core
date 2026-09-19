@@ -133,29 +133,6 @@ The optional API compatibility profile can be run against a released baseline wi
 mvn -B -DcompatibilityBaseline=<version> verify
 ```
 
-## ✅ Project status
-
-The core production roadmap is implemented across the merged milestones:
-
-- provider streaming and response normalization;
-- resumable, versioned, parallel, approval-aware workflows;
-- JDBC/Postgres-compatible and Redis checkpoint persistence;
-- typed tool inputs, capability permissions, audit events, and sandbox limits;
-- trace context, metrics, OTLP export hooks, HTTP, Spring Boot, and MCP boundaries;
-- contract documentation, examples, security guidance, CI checks, and release automation.
-
-Run the full validation locally with:
-
-```bash
-mvn -B clean verify
-```
-
-The optional API compatibility profile can be run against a released baseline with:
-
-```bash
-mvn -B -DcompatibilityBaseline=<version> verify
-```
-
 ---
 <div align="center">
 <i>Built by <a href="https://github.com/Mr-XX23">Mr-XX23</a></i><br>

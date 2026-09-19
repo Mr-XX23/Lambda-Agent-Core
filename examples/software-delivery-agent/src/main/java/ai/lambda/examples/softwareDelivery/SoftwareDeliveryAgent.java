@@ -41,7 +41,8 @@ public final class SoftwareDeliveryAgent {
             return;
         }
 
-        var model = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        String modelName = System.getenv().getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
+        var model = new GoogleModelClient(apiKey, modelName);
         var tools = List.<AgentTool>of(
                 new FileReadTool(repository),
                 new ProcessTool(Set.of("mvn -q test", "mvn -q verify", "git diff --check"))
