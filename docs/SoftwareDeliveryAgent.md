@@ -22,6 +22,8 @@ invocation can resolve them.
 The optional `APPROVE_TOOL_CALLS=true` enables approval-gated model tool calls.
 `APPROVE_WORKFLOW=true` resumes the workflow past its human approval step.
 Without the latter, the workflow persists a `WAITING_APPROVAL` checkpoint.
+The example defaults to `gemini-2.5-flash`; set `GEMINI_MODEL` if your account
+uses a different available Gemini model.
 
 ## Extension path
 
