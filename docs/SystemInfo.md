@@ -32,6 +32,10 @@ Each run receives a unique run ID. `CancellationToken` can stop a run between mo
 
 Model calls can use a bounded `RetryPolicy` with fixed or exponential backoff. Retries are cancellation-aware and cannot extend the run deadline; `onModelRetry` exposes each retry for tracing and metrics. The default policy is `RetryPolicy.none()` so applications opt into retry behavior explicitly.
 
+## Durable workflows
+
+`Workflow` provides explicit sequential execution over `WorkflowStep` functions. A `CheckpointStore` persists the next step and a serializable state map after every successful step. If a step fails, the checkpoint records the failed step and state; rerunning with the same execution ID resumes at that step rather than repeating earlier work. Completed execution IDs are idempotent. `InMemoryCheckpointStore` is provided for tests and short-lived processes. `JsonlCheckpointStore` provides an atomic JSON-backed implementation for local durable execution; database-backed stores can implement the same interface.
+
 ## Error handling
 
 Tool failures use `ToolErrorStrategy.SEND_TO_MODEL` by default, adding an error `TOOL` message so the model can recover. `THROW` aborts immediately. Provider and persistence failures are surfaced as runtime exceptions; callers should log them and decide whether to retry.

@@ -30,6 +30,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
 - **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
+- **⏯️ Resumable Workflows:** Compose explicit steps with checkpoint persistence and resume failed executions without repeating completed steps.
 
 ## 💻 Quick Start
 
