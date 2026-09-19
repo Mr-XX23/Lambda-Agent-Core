@@ -97,6 +97,7 @@ public class WeatherTool implements AgentTool {
 * **Spring Boot Chatbots:** Embed Lambda AI inside a Spring REST Controller to serve an intelligent customer support bot.
 * **Coding Assistants:** Use the provided `FileReadTool` and `FileWriteTool` to build a local AI developer.
 * **Workflow Automation:** Map your internal microservices to `AgentTool` implementations, allowing the LLM to orchestrate complex internal tasks autonomously.
+* **Software Delivery Agent:** The `software-delivery-agent` example combines repository inspection, parallel verification, durable workflow checkpoints, and human approval gates before adding write-capable tools.
 
 ## 📖 Documentation
 For a deep dive into the architecture, the agent loop, and advanced configuration options, please read the [System Architecture Documentation](docs/SystemInfo.md).
@@ -106,6 +107,8 @@ Public extension contracts and compatibility guarantees are documented in
 collected in [Examples](docs/Examples.md), with deployment details in
 [Deployment Integrations](docs/DeploymentIntegrations.md) and operational guidance in
 [Production Operations](docs/ProductionOperations.md).
+The guarded software-engineering agent is documented in
+[Software Delivery Agent](docs/SoftwareDeliveryAgent.md).
 
 ## ✅ Project status
 
