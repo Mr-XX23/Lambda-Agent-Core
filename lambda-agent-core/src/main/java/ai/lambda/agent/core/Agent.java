@@ -151,13 +151,18 @@ public final class Agent {
                     continue;
                 }
                 ToolPolicy policy = tool.getPolicy();
-                if (!config.getToolPermissionPolicy().allowed(sessionId, tool, tool.getCapabilities())) {
+                PermissionDecision permission = config.getToolPermissionPolicy()
+                        .evaluate(sessionId, tool, tool.getCapabilities());
+                if (!permission.allowed()) {
+                    audit(sessionId, call, tool, "DENIED", permission.reason());
                     session.getMessages().add(new Message(Role.TOOL,
-                            "Tool '" + call.getName() + "' was denied by permission policy.", call.getId()));
+                            "Tool '" + call.getName() + "' was denied: " + permission.reason(), call.getId()));
                     continue;
                 }
+                audit(sessionId, call, tool, "AUTHORIZED", permission.reason());
                 if (policy.requiresApproval()
                         && !config.getToolApprovalHandler().approve(sessionId, call)) {
+                    audit(sessionId, call, tool, "DENIED", "human approval was not granted");
                     session.getMessages().add(new Message(Role.TOOL,
                             "Tool '" + call.getName() + "' was not approved.", call.getId()));
                     continue;
@@ -175,7 +180,12 @@ public final class Agent {
                 }
                 try {
                     tool.getArgumentValidator().validate(call.getArgumentsJson());
+                    if (tool.getTypedInputSchema() != null) {
+                        tool.getTypedInputSchema().parse(call.getArgumentsJson());
+                    }
                 } catch (Exception validationError) {
+                    audit(sessionId, call, tool, "DENIED", "typed input rejected: "
+                            + validationError.getMessage());
                     session.getMessages().add(new Message(Role.TOOL,
                             "Tool '" + call.getName() + "' arguments were rejected: "
                                     + validationError.getMessage(), call.getId()));
@@ -253,6 +263,12 @@ public final class Agent {
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
         return result;
+    }
+
+    private void audit(String sessionId, ToolCall call, AgentTool tool, String action, String reason) {
+        ToolAuditEvent event = new ToolAuditEvent(Instant.now(), sessionId, tool.getName(),
+                call.getId(), action, reason, tool.getCapabilities());
+        for (AgentEventListener listener : listeners) listener.onToolAudit(event);
     }
 
     private ChatResponse callModelWithRetry(AgentSession session, CancellationToken cancellationToken,

@@ -32,6 +32,10 @@ public interface AgentTool {
         return argumentsJson -> {};
     }
 
+    default TypedToolInput<?> getTypedInputSchema() {
+        return null;
+    }
+
     /**
      * Execute the tool.
      *
