@@ -100,6 +100,12 @@ public class WeatherTool implements AgentTool {
 ## 📖 Documentation
 For a deep dive into the architecture, the agent loop, and advanced configuration options, please read the [System Architecture Documentation](docs/SystemInfo.md).
 
+Public extension contracts and compatibility guarantees are documented in
+[Extension Contracts](docs/ExtensionContracts.md). Runnable production patterns are
+collected in [Examples](docs/Examples.md), with deployment details in
+[Deployment Integrations](docs/DeploymentIntegrations.md) and operational guidance in
+[Production Operations](docs/ProductionOperations.md).
+
 ---
 <div align="center">
 <i>Built by <a href="https://github.com/Mr-XX23">Mr-XX23</a></i><br>
