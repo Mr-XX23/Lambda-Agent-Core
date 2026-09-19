@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 public final class GoogleModelClient implements ModelClient {
@@ -57,16 +58,20 @@ public final class GoogleModelClient implements ModelClient {
 
             StringBuilder fullText = new StringBuilder();
             List<ToolCall> allToolCalls = new ArrayList<>();
+            AtomicReference<ModelUsage> usage = new AtomicReference<>(ModelUsage.empty());
+            AtomicReference<FinishReason> finishReason = new AtomicReference<>(FinishReason.UNKNOWN);
 
             response.body().forEach(line -> {
                 if (line.startsWith("data: ")) {
                     String jsonData = line.substring(6);
                     JSONObject chunk = new JSONObject(jsonData);
+                    usage.set(parseUsage(chunk));
                     
                     // Gemini stream produces many candidates, usually just one per chunk.
                     JSONArray candidates = chunk.optJSONArray("candidates");
                     if (candidates != null && !candidates.isEmpty()) {
                         JSONObject first = candidates.getJSONObject(0);
+                        finishReason.set(toFinishReason(first.optString("finishReason", ""), false));
                         JSONObject content = first.optJSONObject("content");
                         if (content != null) {
                             JSONArray parts = content.optJSONArray("parts");
@@ -94,9 +99,12 @@ public final class GoogleModelClient implements ModelClient {
             });
 
             Message assistantMessage = new Message(Role.ASSISTANT, fullText.toString(), null);
-            return new ChatResponse(assistantMessage, allToolCalls);
+            return new ChatResponse(assistantMessage, allToolCalls,
+                    toFinishReason(finishReason.get(), !allToolCalls.isEmpty()), usage.get());
 
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to call Gemini streaming", e);
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Failed to call Gemini streaming", e);
         }
@@ -212,6 +220,8 @@ public final class GoogleModelClient implements ModelClient {
 
             JSONObject first = candidates.getJSONObject(0);
             JSONObject content = first.optJSONObject("content");
+            String finishReason = first.optString("finishReason", "");
+            ModelUsage usage = parseUsage(body);
 
             List<ToolCall> toolCalls = new ArrayList<>();
             StringBuilder assistantText = new StringBuilder();
@@ -235,9 +245,12 @@ public final class GoogleModelClient implements ModelClient {
             }
 
             Message assistantMessage = new Message(Role.ASSISTANT, assistantText.toString(), null);
-            return new ChatResponse(assistantMessage, toolCalls);
+            return new ChatResponse(assistantMessage, toolCalls,
+                    toFinishReason(finishReason, !toolCalls.isEmpty()), usage);
 
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to call Gemini", e);
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Failed to call Gemini", e);
         }
@@ -250,5 +263,33 @@ public final class GoogleModelClient implements ModelClient {
             case USER, SYSTEM -> "user";
             case ASSISTANT, TOOL -> "model";
         };
+    }
+
+    static ModelUsage parseUsage(JSONObject body) {
+        JSONObject usage = body.optJSONObject("usageMetadata");
+        if (usage == null) {
+            return ModelUsage.empty();
+        }
+        return new ModelUsage(usage.optLong("promptTokenCount", 0),
+                usage.optLong("candidatesTokenCount", 0),
+                usage.optLong("totalTokenCount", 0));
+    }
+
+    static FinishReason toFinishReason(String reason, boolean hasToolCalls) {
+        if (hasToolCalls) {
+            return FinishReason.TOOL_CALLS;
+        }
+        return switch (reason == null ? "" : reason.toUpperCase(java.util.Locale.ROOT)) {
+            case "STOP" -> FinishReason.STOP;
+            case "MAX_TOKENS", "RECITATION" -> FinishReason.LENGTH;
+            case "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII" ->
+                    FinishReason.CONTENT_FILTER;
+            case "MALFORMED_FUNCTION_CALL" -> FinishReason.TOOL_CALLS;
+            default -> FinishReason.UNKNOWN;
+        };
+    }
+
+    private static FinishReason toFinishReason(FinishReason current, boolean hasToolCalls) {
+        return hasToolCalls ? FinishReason.TOOL_CALLS : current;
     }
 }
