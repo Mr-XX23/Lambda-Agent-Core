@@ -11,6 +11,8 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.security.MessageDigest;
 
 /** Minimal JDK HTTP bridge; applications can place auth and TLS in their edge. */
 public final class AgentHttpServer implements AutoCloseable {
@@ -19,6 +21,7 @@ public final class AgentHttpServer implements AutoCloseable {
     private final ExecutorService executor;
     private final HttpServerConfig config;
     private final Map<String, Workflow> workflows;
+    private final Semaphore requestPermits;
 
     public AgentHttpServer(Agent agent, InetSocketAddress address) throws IOException {
         this(agent, address, HttpServerConfig.defaults(), Map.of());
@@ -33,9 +36,16 @@ public final class AgentHttpServer implements AutoCloseable {
         this.agent = Objects.requireNonNull(agent);
         this.config = Objects.requireNonNull(config);
         this.workflows = Map.copyOf(workflows);
+        if (!config.requiresAuthentication()
+                && (address.getAddress() == null || !address.getAddress().isLoopbackAddress())) {
+            throw new IllegalArgumentException("Bearer authentication is required for non-loopback HTTP binds");
+        }
+        this.requestPermits = new Semaphore(config.maxConcurrentRequests());
         this.server = HttpServer.create(address, 0);
-        server.createContext("/agent/run", this::handleRun);
-        server.createContext("/workflow/run", this::handleWorkflow);
+        var agentContext = server.createContext("/agent/run", this::handleRun);
+        var workflowContext = server.createContext("/workflow/run", this::handleWorkflow);
+        agentContext.getFilters().add(new AdmissionFilter());
+        workflowContext.getFilters().add(new AdmissionFilter());
         executor = Executors.newVirtualThreadPerTaskExecutor();
         server.setExecutor(executor);
     }
@@ -116,7 +126,24 @@ public final class AgentHttpServer implements AutoCloseable {
     private boolean authorized(HttpExchange exchange) {
         if (!config.requiresAuthentication()) return true;
         String value = exchange.getRequestHeaders().getFirst("Authorization");
-        return value != null && value.equals("Bearer " + config.bearerToken());
+        return value != null && MessageDigest.isEqual(
+                value.getBytes(StandardCharsets.UTF_8),
+                ("Bearer " + config.bearerToken()).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private final class AdmissionFilter extends com.sun.net.httpserver.Filter {
+        @Override public String description() { return "bounded request admission"; }
+        @Override public void doFilter(HttpExchange exchange, Chain chain) throws IOException {
+            if (!requestPermits.tryAcquire()) {
+                respond(exchange, 429, new JSONObject().put("error", "request capacity exceeded"));
+                return;
+            }
+            try {
+                chain.doFilter(exchange);
+            } finally {
+                requestPermits.release();
+            }
+        }
     }
 
     private static void respondSse(HttpExchange exchange, JSONObject body) throws IOException {
