@@ -10,9 +10,14 @@ From the repository root:
 
 ```bash
 set GEMINI_API_KEY=your-key
-mvn -pl examples/software-delivery-agent -am compile
+mvn -pl examples/software-delivery-agent -am install -DskipTests
 mvn -pl examples/software-delivery-agent exec:java
 ```
+
+The `install` step is required the first time because the example depends on
+the sibling `lambda-ai-core` and `lambda-agent-core` modules. It places those
+reactor artifacts in the local Maven repository so the separate `exec:java`
+invocation can resolve them.
 
 The optional `APPROVE_TOOL_CALLS=true` enables approval-gated model tool calls.
 `APPROVE_WORKFLOW=true` resumes the workflow past its human approval step.

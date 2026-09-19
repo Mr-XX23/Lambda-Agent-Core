@@ -63,7 +63,7 @@ from the repository root:
 
 ```bash
 export GEMINI_API_KEY="your-key"
-mvn -pl examples/software-delivery-agent -am compile
+mvn -pl examples/software-delivery-agent -am install -DskipTests
 mvn -pl examples/software-delivery-agent exec:java
 ```
 
@@ -71,7 +71,7 @@ On Windows PowerShell, use:
 
 ```powershell
 $env:GEMINI_API_KEY = "your-key"
-mvn -pl examples/software-delivery-agent -am compile
+mvn -pl examples/software-delivery-agent -am install -DskipTests
 mvn -pl examples/software-delivery-agent exec:java
 ```
 
@@ -312,4 +312,3 @@ integration.
 Explore the complete implementation here:
 
 **https://github.com/Mr-XX23/Lambda-Agent-Core**
-

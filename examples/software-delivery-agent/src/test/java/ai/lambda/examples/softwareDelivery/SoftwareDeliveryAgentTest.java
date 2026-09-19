@@ -20,7 +20,7 @@ class SoftwareDeliveryAgentTest {
     @Test
     void inspectsRepositoryWithoutWalkingGitMetadata() throws Exception {
         Path repository = Files.createTempDirectory("delivery-agent-");
-        Files.createDirectories(repository.resolve(".git"));
+        Files.writeString(repository.resolve(".git"), "gitdir: .git/worktree");
         Files.writeString(repository.resolve("pom.xml"), "<project/>");
         Files.writeString(repository.resolve("README.md"), "# test");
 

@@ -128,7 +128,7 @@ public final class SoftwareDeliveryAgent {
         }
         context.put("fileCount", files);
         context.put("hasPom", Files.exists(repository.resolve("pom.xml")));
-        context.put("hasGitMetadata", Files.isDirectory(repository.resolve(".git")));
+        context.put("hasGitMetadata", Files.exists(repository.resolve(".git")));
         context.put("repositoryReady", true);
     }
 
