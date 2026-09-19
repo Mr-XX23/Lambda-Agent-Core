@@ -31,6 +31,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
 - **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
 - **⏯️ Resumable Workflows:** Compose explicit steps with checkpoint persistence and resume failed executions without repeating completed steps.
+- **🗄️ JDBC Checkpoints:** Persist versioned workflow checkpoints through any `DataSource`, including Postgres, without bundling a JDBC driver.
 - **🔎 Structured Tracing:** Capture run, model, retry, iteration, and tool events through a pluggable tracer.
 - **🛡️ Tool Safety:** Tools can require approval and enforce execution timeouts.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
