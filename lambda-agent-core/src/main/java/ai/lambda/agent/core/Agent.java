@@ -14,6 +14,8 @@ import java.util.UUID;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 public final class Agent {
@@ -23,6 +25,7 @@ public final class Agent {
     private final Map<String, AgentTool> toolRegistry;
     private final List<ToolSchema> toolSchemas;
     private final List<AgentEventListener> listeners = new ArrayList<>();
+    private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public Agent(AgentConfig config, SessionStore sessionStore) {
         this.config = config;
@@ -72,6 +75,15 @@ public final class Agent {
     public AgentResult run(String sessionId, String userInput, CancellationToken cancellationToken) {
         String runId = UUID.randomUUID().toString();
         TraceContext.activate(runId);
+        try {
+            return runInternal(sessionId, userInput, cancellationToken, runId);
+        } finally {
+            TraceContext.clear();
+        }
+    }
+
+    private AgentResult runInternal(String sessionId, String userInput,
+                                    CancellationToken cancellationToken, String runId) {
         Instant deadline = Instant.now().plus(config.getRunTimeout());
         for (AgentEventListener listener : listeners) listener.onRunStart(runId, sessionId);
 
@@ -128,7 +140,6 @@ public final class Agent {
                 sessionStore.save(session);
                 AgentResult result = new AgentResult(assistant.getContent(), session, runId, iteration + 1);
                 for (AgentEventListener listener : listeners) listener.onRunEnd(result);
-                TraceContext.clear();
                 return result;
             }
 
@@ -202,8 +213,8 @@ public final class Agent {
                 try {
 
                     // Execute the tool and get the result.
-                    try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-                        java.util.concurrent.Future<ToolResult> future = executor.submit(() -> tool.execute(ctx));
+                    {
+                        java.util.concurrent.Future<ToolResult> future = toolExecutor.submit(() -> tool.execute(ctx));
                         try {
                             result = future.get(policy.timeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
                         } catch (java.util.concurrent.TimeoutException timeout) {
@@ -264,7 +275,6 @@ public final class Agent {
                 session, runId, config.getMaxIterations()
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
-        TraceContext.clear();
         return result;
     }
 

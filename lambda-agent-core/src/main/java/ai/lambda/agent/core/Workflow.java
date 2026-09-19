@@ -6,6 +6,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 public final class Workflow {
+    private static final java.util.concurrent.ExecutorService STEP_EXECUTOR =
+            java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
     private final String name;
     private final List<WorkflowStep> steps;
     private final List<WorkflowStepSpec> specifications;
@@ -92,8 +94,8 @@ public final class Workflow {
         Exception lastError = null;
         for (int attempt = 1; attempt <= specification.retryPolicy().maxAttempts(); attempt++) {
             cancellationToken.throwIfCancelled();
-            try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-                var future = executor.submit(() -> {
+            {
+                var future = STEP_EXECUTOR.submit(() -> {
                     specification.step().execute(context, cancellationToken);
                     return null;
                 });
