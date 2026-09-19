@@ -17,6 +17,7 @@ public final class AgentConfig {
     private final int maxToolArgumentLength;
     private final RetryPolicy modelRetryPolicy;
     private final ToolApprovalHandler toolApprovalHandler;
+    private final ToolPermissionPolicy toolPermissionPolicy;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -46,6 +47,14 @@ public final class AgentConfig {
     public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                        ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
                        RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler) {
+        this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, ToolPermissionPolicy.allowAll());
+    }
+
+    public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
+                       ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
+                       RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
+                       ToolPermissionPolicy toolPermissionPolicy) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -61,6 +70,7 @@ public final class AgentConfig {
         this.maxToolArgumentLength = maxToolArgumentLength;
         this.modelRetryPolicy = Objects.requireNonNull(modelRetryPolicy, "modelRetryPolicy must not be null");
         this.toolApprovalHandler = Objects.requireNonNull(toolApprovalHandler, "toolApprovalHandler must not be null");
+        this.toolPermissionPolicy = Objects.requireNonNull(toolPermissionPolicy, "toolPermissionPolicy must not be null");
     }
 
     public String getSystemPrompt() {
@@ -101,5 +111,9 @@ public final class AgentConfig {
 
     public ToolApprovalHandler getToolApprovalHandler() {
         return toolApprovalHandler;
+    }
+
+    public ToolPermissionPolicy getToolPermissionPolicy() {
+        return toolPermissionPolicy;
     }
 }

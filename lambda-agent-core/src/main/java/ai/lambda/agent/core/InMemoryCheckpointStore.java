@@ -16,4 +16,14 @@ public final class InMemoryCheckpointStore implements CheckpointStore {
     public void save(WorkflowCheckpoint checkpoint) {
         checkpoints.put(checkpoint.executionId(), checkpoint);
     }
+
+    @Override
+    public synchronized void save(WorkflowCheckpoint checkpoint, long expectedVersion) {
+        WorkflowCheckpoint current = checkpoints.get(checkpoint.executionId());
+        long actual = current == null ? 0 : current.version();
+        if (actual != expectedVersion) {
+            throw new OptimisticLockException(checkpoint.executionId(), expectedVersion, actual);
+        }
+        checkpoints.put(checkpoint.executionId(), checkpoint);
+    }
 }

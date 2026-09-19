@@ -61,12 +61,12 @@ public final class Workflow {
                 }
                 checkpoint = new WorkflowCheckpoint(executionId, name, stepIndex + 1,
                         stepIndex + 1 == steps.size() ? WorkflowStatus.COMPLETED : WorkflowStatus.RUNNING,
-                        context.getState(), null);
-                checkpointStore.save(checkpoint);
+                        context.getState(), null, checkpoint.version() + 1);
+                checkpointStore.save(checkpoint, checkpoint.version() - 1);
             } catch (Exception error) {
                 checkpoint = new WorkflowCheckpoint(executionId, name, stepIndex,
-                        WorkflowStatus.FAILED, context.getState(), error.getMessage());
-                checkpointStore.save(checkpoint);
+                        WorkflowStatus.FAILED, context.getState(), error.getMessage(), checkpoint.version() + 1);
+                checkpointStore.save(checkpoint, checkpoint.version() - 1);
                 throw new WorkflowExecutionException(executionId, stepIndex, error);
             }
         }

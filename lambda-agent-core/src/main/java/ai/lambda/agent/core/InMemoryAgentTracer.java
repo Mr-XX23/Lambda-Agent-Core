@@ -80,6 +80,11 @@ public final class InMemoryAgentTracer implements AgentTracer {
         return List.copyOf(new ArrayList<>(events));
     }
 
+    @Override
+    public void accept(TraceEvent event) {
+        events.add(event);
+    }
+
     private void add(TraceEventType type, String name, long duration, Map<String, Object> attributes) {
         RunState run = currentRun.get();
         events.add(new TraceEvent(Instant.now(), run == null ? null : run.runId(),
