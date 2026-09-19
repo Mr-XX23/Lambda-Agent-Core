@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 public final class FileReadTool implements AgentTool {
+    private static final long MAX_FILE_BYTES = 1024 * 1024;
     private final Path root;
 
     public FileReadTool() {
@@ -51,6 +52,9 @@ public final class FileReadTool implements AgentTool {
         }
         if (!Files.exists(path)) {
             throw new Exception("File does not exist: " + filePathStr);
+        }
+        if (Files.size(path) > MAX_FILE_BYTES) {
+            throw new SecurityException("File exceeds the 1 MiB sandbox limit");
         }
 
         String content = Files.readString(path);

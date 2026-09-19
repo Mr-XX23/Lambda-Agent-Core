@@ -32,6 +32,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
 - **⏯️ Resumable Workflows:** Compose explicit steps with checkpoint persistence and resume failed executions without repeating completed steps.
 - **🗄️ JDBC Checkpoints:** Persist versioned workflow checkpoints through any `DataSource`, including Postgres, without bundling a JDBC driver.
+- **⚡ Redis Checkpoints:** Use the `RedisCheckpointClient` SPI with Lettuce, Jedis, or another Redis client for atomic compare-and-set persistence.
 - **🔎 Structured Tracing:** Capture run, model, retry, iteration, and tool events through a pluggable tracer.
 - **🛡️ Tool Safety:** Tools can require approval and enforce execution timeouts.
 - **🌿 Reliable Workflow Fan-out:** Main workflows support parallel branches with branch-local retries, cancellation propagation, persisted branch state, joins, and resumable approval steps.

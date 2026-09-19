@@ -184,14 +184,14 @@ public class OpenAIModelClient implements ModelClient {
         return requestBody;
     }
 
-    private static ModelUsage parseUsage(JSONObject body) {
+    static ModelUsage parseUsage(JSONObject body) {
         JSONObject usage = body.optJSONObject("usage");
         if (usage == null) return ModelUsage.empty();
         return new ModelUsage(usage.optLong("prompt_tokens", 0),
                 usage.optLong("completion_tokens", 0), usage.optLong("total_tokens", 0));
     }
 
-    private static FinishReason toFinishReason(String reason) {
+    static FinishReason toFinishReason(String reason) {
         return switch (reason) {
             case "stop" -> FinishReason.STOP;
             case "tool_calls", "function_call" -> FinishReason.TOOL_CALLS;
