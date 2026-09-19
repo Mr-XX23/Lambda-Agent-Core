@@ -29,6 +29,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
+- **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
 
 ## 💻 Quick Start
 

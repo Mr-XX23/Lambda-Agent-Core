@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import org.json.JSONObject;
 
@@ -101,13 +102,7 @@ public final class Agent {
             for (AgentEventListener l : listeners) l.onIterationStart(iteration);
 
             // Call the model with the current conversation and tool schemas, using streaming.
-            ChatResponse response = config.getModelClient().streamChat(
-                    session.getMessages(),
-                    toolSchemas,
-                    delta -> {
-                        for (AgentEventListener l : listeners) l.onAssistantDelta(delta);
-                    }
-            );
+            ChatResponse response = callModelWithRetry(session, cancellationToken, deadline);
             for (AgentEventListener listener : listeners) listener.onModelResponse(response);
 
             // Add the assistant's response to the conversation.
@@ -225,5 +220,55 @@ public final class Agent {
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
         return result;
+    }
+
+    private ChatResponse callModelWithRetry(AgentSession session, CancellationToken cancellationToken,
+                                            Instant deadline) {
+        RetryPolicy policy = config.getModelRetryPolicy();
+        for (int attempt = 1; attempt <= policy.maxAttempts(); attempt++) {
+            cancellationToken.throwIfCancelled();
+            try {
+                return config.getModelClient().streamChat(
+                        session.getMessages(),
+                        toolSchemas,
+                        delta -> {
+                            for (AgentEventListener listener : listeners) {
+                                listener.onAssistantDelta(delta);
+                            }
+                        });
+            } catch (RuntimeException error) {
+                if (attempt == policy.maxAttempts() || error instanceof java.util.concurrent.CancellationException) {
+                    throw error;
+                }
+                Duration delay = policy.delayBeforeAttempt(attempt + 1);
+                for (AgentEventListener listener : listeners) {
+                    listener.onModelRetry(attempt + 1, error, delay);
+                }
+                sleepBeforeRetry(delay, cancellationToken, deadline);
+            }
+        }
+        throw new IllegalStateException("Retry policy produced no model response");
+    }
+
+    private static void sleepBeforeRetry(Duration delay, CancellationToken cancellationToken,
+                                         Instant deadline) {
+        long remainingMillis = Duration.between(Instant.now(), deadline).toMillis();
+        if (remainingMillis <= 0 || delay.toMillis() > remainingMillis) {
+            throw new RuntimeException(new TimeoutException("Agent run exceeded its deadline before model retry"));
+        }
+        try {
+            long end = System.nanoTime() + delay.toNanos();
+            while (true) {
+                cancellationToken.throwIfCancelled();
+                long remainingNanos = end - System.nanoTime();
+                if (remainingNanos <= 0) {
+                    return;
+                }
+                Thread.sleep(Math.max(1, Math.min(remainingNanos / 1_000_000L, 50)));
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting to retry model call", error);
+        }
     }
 }
