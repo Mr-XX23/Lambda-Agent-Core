@@ -20,6 +20,10 @@ public interface AgentTool {
      */
     String getJsonSchema();
 
+    default ToolPolicy getPolicy() {
+        return ToolPolicy.unrestricted();
+    }
+
     /**
      * Execute the tool.
      *

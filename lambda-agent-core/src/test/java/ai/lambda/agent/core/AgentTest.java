@@ -155,6 +155,38 @@ class AgentTest {
     }
 
     @Test
+    void blocksUnapprovedToolCalls() {
+        AtomicInteger executions = new AtomicInteger();
+        AgentTool tool = new AgentTool() {
+            public String getName() { return "write"; }
+            public String getDescription() { return "writes"; }
+            public String getJsonSchema() { return "{\"type\":\"object\"}"; }
+            public ToolPolicy getPolicy() { return new ToolPolicy(true, Duration.ofSeconds(1)); }
+            public ToolResult execute(ToolInvocationContext context) {
+                executions.incrementAndGet();
+                return ToolResult.of("written");
+            }
+        };
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "", null),
+                        List.of(new ToolCall("call", "write", "{}")));
+            }
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) { return chat(messages, tools); }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(tool), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.none(), (session, call) -> false);
+
+        AgentResult result = new Agent(config, new InMemorySessionStore()).run("session", "write");
+
+        assertEquals(0, executions.get());
+        assertTrue(result.getSession().getMessages().stream()
+                .anyMatch(message -> message.getContent().contains("not approved")));
+    }
+
+    @Test
     void retriesTransientModelFailureAndNotifiesListener() {
         AtomicInteger calls = new AtomicInteger();
         AtomicInteger retries = new AtomicInteger();

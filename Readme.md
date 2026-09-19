@@ -32,6 +32,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
 - **⏯️ Resumable Workflows:** Compose explicit steps with checkpoint persistence and resume failed executions without repeating completed steps.
 - **🔎 Structured Tracing:** Capture run, model, retry, iteration, and tool events through a pluggable tracer.
+- **🛡️ Tool Safety:** Tools can require approval and enforce execution timeouts.
 
 ## 💻 Quick Start
 
