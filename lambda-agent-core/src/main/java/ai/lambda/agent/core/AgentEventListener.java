@@ -7,6 +7,7 @@ public interface AgentEventListener {
     default void onRunStart(String runId, String sessionId) {}
     default void onRunEnd(AgentResult result) {}
     default void onModelResponse(ai.lambda.ai.core.ChatResponse response) {}
+    default void onModelRetry(int attempt, Exception error, java.time.Duration delay) {}
     // Fired when the agent begins a new model call loop
     default void onIterationStart(int iteration) {}
 

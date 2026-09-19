@@ -15,6 +15,7 @@ public final class AgentConfig {
     private final ToolErrorStrategy toolErrorStrategy;
     private final Duration runTimeout;
     private final int maxToolArgumentLength;
+    private final RetryPolicy modelRetryPolicy;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -30,6 +31,13 @@ public final class AgentConfig {
 
     public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                        ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength) {
+        this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy,
+                runTimeout, maxToolArgumentLength, RetryPolicy.none());
+    }
+
+    public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
+                       ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
+                       RetryPolicy modelRetryPolicy) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -43,6 +51,7 @@ public final class AgentConfig {
             throw new IllegalArgumentException("maxToolArgumentLength must be positive");
         }
         this.maxToolArgumentLength = maxToolArgumentLength;
+        this.modelRetryPolicy = Objects.requireNonNull(modelRetryPolicy, "modelRetryPolicy must not be null");
     }
 
     public String getSystemPrompt() {
@@ -75,5 +84,9 @@ public final class AgentConfig {
 
     public int getMaxToolArgumentLength() {
         return maxToolArgumentLength;
+    }
+
+    public RetryPolicy getModelRetryPolicy() {
+        return modelRetryPolicy;
     }
 }

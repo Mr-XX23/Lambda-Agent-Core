@@ -30,6 +30,8 @@ Session messages and metadata are mutable by design so tools can maintain applic
 
 Each run receives a unique run ID. `CancellationToken` can stop a run between model/tool steps, and `AgentConfig` supports a run deadline and maximum tool-argument size. `AgentEventListener` exposes run start/end and normalized model-response events for tracing.
 
+Model calls can use a bounded `RetryPolicy` with fixed or exponential backoff. Retries are cancellation-aware and cannot extend the run deadline; `onModelRetry` exposes each retry for tracing and metrics. The default policy is `RetryPolicy.none()` so applications opt into retry behavior explicitly.
+
 ## Error handling
 
 Tool failures use `ToolErrorStrategy.SEND_TO_MODEL` by default, adding an error `TOOL` message so the model can recover. `THROW` aborts immediately. Provider and persistence failures are surfaced as runtime exceptions; callers should log them and decide whether to retry.

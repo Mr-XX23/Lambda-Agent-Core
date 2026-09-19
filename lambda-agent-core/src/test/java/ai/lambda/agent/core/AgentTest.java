@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -151,5 +152,63 @@ class AgentTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new Agent(new AgentConfig("system", model, List.of(invalid), 1),
                         new InMemorySessionStore()));
+    }
+
+    @Test
+    void retriesTransientModelFailureAndNotifiesListener() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger retries = new AtomicInteger();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "done", null), List.of());
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                if (calls.incrementAndGet() == 1) {
+                    throw new RuntimeException("temporary");
+                }
+                return chat(messages, tools);
+            }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.exponential(2, Duration.ZERO));
+        Agent agent = new Agent(config, new InMemorySessionStore());
+        agent.addListener(new AgentEventListener() {
+            @Override
+            public void onModelRetry(int attempt, Exception error, Duration delay) {
+                retries.incrementAndGet();
+            }
+        });
+
+        AgentResult result = agent.run("session", "hello");
+
+        assertEquals("done", result.getFinalText());
+        assertEquals(2, calls.get());
+        assertEquals(1, retries.get());
+    }
+
+    @Test
+    void doesNotRetryWhenPolicyAllowsOnlyOneAttempt() {
+        AtomicInteger calls = new AtomicInteger();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return null;
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                calls.incrementAndGet();
+                throw new RuntimeException("permanent");
+            }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.none());
+        Agent agent = new Agent(config, new InMemorySessionStore());
+
+        assertThrows(RuntimeException.class, () -> agent.run("session", "hello"));
+        assertEquals(1, calls.get());
     }
 }
