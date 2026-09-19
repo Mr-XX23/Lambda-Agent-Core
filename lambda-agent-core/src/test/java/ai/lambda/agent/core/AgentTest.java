@@ -166,6 +166,44 @@ class AgentTest {
                 executions.incrementAndGet();
                 return ToolResult.of("written");
             }
+
+            @Test
+            void validatesArgumentsAndTruncatesLargeResults() {
+                AgentTool tool = new AgentTool() {
+                    public String getName() { return "bounded"; }
+                    public String getDescription() { return "bounded"; }
+                    public String getJsonSchema() { return "{\"type\":\"object\"}"; }
+                    public ToolPolicy getPolicy() { return new ToolPolicy(false, Duration.ofSeconds(1), 5); }
+                    public ToolArgumentValidator getArgumentValidator() {
+                        return arguments -> {
+                            if (!arguments.contains("\"ok\"")) throw new IllegalArgumentException("missing ok");
+                        };
+                    }
+                    public ToolResult execute(ToolInvocationContext context) {
+                        return ToolResult.of("123456789");
+                    }
+                };
+                AtomicInteger calls = new AtomicInteger();
+                ModelClient model = new ModelClient() {
+                    public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                        return new ChatResponse(new Message(Role.ASSISTANT, "done", null), List.of());
+                    }
+                    public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                                   Consumer<String> onDelta) {
+                        if (calls.incrementAndGet() == 1) {
+                            return new ChatResponse(new Message(Role.ASSISTANT, "", null),
+                                    List.of(new ToolCall("call", "bounded", "{\"ok\":true}")));
+                        }
+                        return chat(messages, tools);
+                    }
+                };
+
+                AgentResult result = new Agent(new AgentConfig("system", model, List.of(tool), 2),
+                        new InMemorySessionStore()).run("session", "run");
+
+                assertTrue(result.getSession().getMessages().stream()
+                        .anyMatch(message -> message.getContent().contains("Result truncated")));
+            }
         };
         ModelClient model = new ModelClient() {
             public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {

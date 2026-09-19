@@ -34,6 +34,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🔎 Structured Tracing:** Capture run, model, retry, iteration, and tool events through a pluggable tracer.
 - **🛡️ Tool Safety:** Tools can require approval and enforce execution timeouts.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
+- **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 
 ## 💻 Quick Start
 

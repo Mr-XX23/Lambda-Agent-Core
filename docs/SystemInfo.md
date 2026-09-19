@@ -46,6 +46,8 @@ Provider adapters normalize finish reasons and token usage through `ChatResponse
 
 `WorkflowStepSpec` adds optional conditions, per-step retry policies, and timeouts to sequential workflows. Existing `WorkflowStep` constructors remain supported. Tools can override `AgentTool.getPolicy()` to require approval and set an execution timeout; `AgentConfig` supplies the approval handler. Unapproved calls become explicit tool messages and are not executed.
 
+Tools may also provide a `ToolArgumentValidator`; rejected arguments are returned to the model as a tool error without invoking the implementation. `ToolPolicy.maxResultLength` bounds the content returned to the model. `FileReadTool(Path root)` resolves and normalizes paths beneath the configured root and rejects traversal outside it.
+
 ## Error handling
 
 Tool failures use `ToolErrorStrategy.SEND_TO_MODEL` by default, adding an error `TOOL` message so the model can recover. `THROW` aborts immediately. Provider and persistence failures are surfaced as runtime exceptions; callers should log them and decide whether to retry.

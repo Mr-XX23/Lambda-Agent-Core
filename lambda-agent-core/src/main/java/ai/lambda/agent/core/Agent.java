@@ -168,6 +168,14 @@ public final class Agent {
                         && call.getArgumentsJson().length() > config.getMaxToolArgumentLength()) {
                     throw new IllegalArgumentException("Tool arguments exceed configured limit");
                 }
+                try {
+                    tool.getArgumentValidator().validate(call.getArgumentsJson());
+                } catch (Exception validationError) {
+                    session.getMessages().add(new Message(Role.TOOL,
+                            "Tool '" + call.getName() + "' arguments were rejected: "
+                                    + validationError.getMessage(), call.getId()));
+                    continue;
+                }
 
                 for (AgentEventListener l : listeners) l.onToolStart(call, ctx);
 
@@ -219,7 +227,10 @@ public final class Agent {
                 // Add the tool result as a TOOL message in the conversation, so the model can see the result in the next turn.
                 var toolMessage = new Message(
                         Role.TOOL,
-                        result.getContent(),
+                        result.getContent().length() > policy.maxResultLength()
+                                ? result.getContent().substring(0, policy.maxResultLength())
+                                        + "\n[lambda-agent-core] Result truncated."
+                                : result.getContent(),
                         call.getId(),
                         call.getName(),
                         null
