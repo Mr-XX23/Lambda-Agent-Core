@@ -54,6 +54,7 @@ public final class Workflow {
         Map<String, Object> state = existing.isEmpty() ? initialState : checkpoint.state();
         WorkflowContext context = new WorkflowContext(state);
         context.put("executionId", executionId);
+        context.put("traceId", TraceContext.currentTraceId());
         for (int stepIndex = checkpoint.nextStep(); stepIndex < steps.size(); stepIndex++) {
             cancellationToken.throwIfCancelled();
             try {

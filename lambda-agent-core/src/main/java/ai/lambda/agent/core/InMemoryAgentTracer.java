@@ -19,7 +19,7 @@ public final class InMemoryAgentTracer implements AgentTracer {
 
     @Override
     public void onRunStart(String runId, String sessionId) {
-        currentRun.set(new RunState(runId, sessionId, Instant.now()));
+        currentRun.set(new RunState(runId, sessionId, Instant.now(), TraceContext.currentTraceId()));
         add(TraceEventType.RUN_STARTED, "agent.run", 0, Map.of());
     }
 
@@ -88,7 +88,8 @@ public final class InMemoryAgentTracer implements AgentTracer {
     private void add(TraceEventType type, String name, long duration, Map<String, Object> attributes) {
         RunState run = currentRun.get();
         events.add(new TraceEvent(Instant.now(), run == null ? null : run.runId(),
-                run == null ? null : run.sessionId(), type, name, duration, attributes));
+                run == null ? null : run.sessionId(), run == null ? null : run.traceId(),
+                type, name, duration, attributes));
     }
 
     private static long elapsed(Instant startedAt) {
@@ -99,6 +100,6 @@ public final class InMemoryAgentTracer implements AgentTracer {
         return startedAt == null ? 0 : Math.max(0, (System.nanoTime() - startedAt) / 1_000_000L);
     }
 
-    private record RunState(String runId, String sessionId, Instant startedAt) {
+    private record RunState(String runId, String sessionId, Instant startedAt, String traceId) {
     }
 }

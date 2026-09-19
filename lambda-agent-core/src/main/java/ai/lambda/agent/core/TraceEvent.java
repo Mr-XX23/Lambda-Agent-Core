@@ -7,6 +7,7 @@ public record TraceEvent(
         Instant timestamp,
         String runId,
         String sessionId,
+        String traceId,
         TraceEventType type,
         String name,
         long durationMillis,
@@ -17,5 +18,10 @@ public record TraceEvent(
         if (durationMillis < 0) {
             throw new IllegalArgumentException("durationMillis must not be negative");
         }
+    }
+
+    public TraceEvent(Instant timestamp, String runId, String sessionId, TraceEventType type,
+                      String name, long durationMillis, Map<String, Object> attributes) {
+        this(timestamp, runId, sessionId, TraceContext.currentTraceId(), type, name, durationMillis, attributes);
     }
 }
