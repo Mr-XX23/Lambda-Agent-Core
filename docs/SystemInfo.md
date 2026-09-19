@@ -40,6 +40,8 @@ Model calls can use a bounded `RetryPolicy` with fixed or exponential backoff. R
 
 `AgentTracer` extends the event listener API with a structured `TraceEvent` stream. `InMemoryAgentTracer` captures run, iteration, model, retry, and tool lifecycle events, including run IDs, session IDs, token usage, finish reasons, error types, and durations. Applications can implement `AgentTracer` to export the same events to OpenTelemetry, logs, or a metrics backend without coupling the agent runtime to a vendor.
 
+Provider adapters normalize finish reasons and token usage through `ChatResponse`. OpenAI streaming consumes SSE deltas, assembles incremental tool-call arguments, and emits text chunks through the model client's callback. OpenAI streaming requests request usage metadata where supported.
+
 ## Workflow and tool safety
 
 `WorkflowStepSpec` adds optional conditions, per-step retry policies, and timeouts to sequential workflows. Existing `WorkflowStep` constructors remain supported. Tools can override `AgentTool.getPolicy()` to require approval and set an execution timeout; `AgentConfig` supplies the approval handler. Unapproved calls become explicit tool messages and are not executed.
