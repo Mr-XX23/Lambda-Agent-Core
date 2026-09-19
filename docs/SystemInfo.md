@@ -40,6 +40,10 @@ Model calls can use a bounded `RetryPolicy` with fixed or exponential backoff. R
 
 `AgentTracer` extends the event listener API with a structured `TraceEvent` stream. `InMemoryAgentTracer` captures run, iteration, model, retry, and tool lifecycle events, including run IDs, session IDs, token usage, finish reasons, error types, and durations. Applications can implement `AgentTracer` to export the same events to OpenTelemetry, logs, or a metrics backend without coupling the agent runtime to a vendor.
 
+## Workflow and tool safety
+
+`WorkflowStepSpec` adds optional conditions, per-step retry policies, and timeouts to sequential workflows. Existing `WorkflowStep` constructors remain supported. Tools can override `AgentTool.getPolicy()` to require approval and set an execution timeout; `AgentConfig` supplies the approval handler. Unapproved calls become explicit tool messages and are not executed.
+
 ## Error handling
 
 Tool failures use `ToolErrorStrategy.SEND_TO_MODEL` by default, adding an error `TOOL` message so the model can recover. `THROW` aborts immediately. Provider and persistence failures are surfaced as runtime exceptions; callers should log them and decide whether to retry.

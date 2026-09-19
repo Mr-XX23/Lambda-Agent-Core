@@ -150,6 +150,13 @@ public final class Agent {
 
                     continue;
                 }
+                ToolPolicy policy = tool.getPolicy();
+                if (policy.requiresApproval()
+                        && !config.getToolApprovalHandler().approve(sessionId, call)) {
+                    session.getMessages().add(new Message(Role.TOOL,
+                            "Tool '" + call.getName() + "' was not approved.", call.getId()));
+                    continue;
+                }
 
                 // Create the context and execute the tool.
                 ToolInvocationContext ctx = new ToolInvocationContext(
@@ -170,7 +177,17 @@ public final class Agent {
                 try {
 
                     // Execute the tool and get the result.
-                    result = tool.execute(ctx);
+                    try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+                        java.util.concurrent.Future<ToolResult> future = executor.submit(() -> tool.execute(ctx));
+                        try {
+                            result = future.get(policy.timeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+                        } catch (java.util.concurrent.TimeoutException timeout) {
+                            future.cancel(true);
+                            throw new RuntimeException("Tool '" + call.getName() + "' timed out", timeout);
+                        } finally {
+                            future.cancel(false);
+                        }
+                    }
 
                     for (AgentEventListener l : listeners) l.onToolEnd(call, result);
 

@@ -16,6 +16,7 @@ public final class AgentConfig {
     private final Duration runTimeout;
     private final int maxToolArgumentLength;
     private final RetryPolicy modelRetryPolicy;
+    private final ToolApprovalHandler toolApprovalHandler;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -38,6 +39,13 @@ public final class AgentConfig {
     public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                        ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
                        RetryPolicy modelRetryPolicy) {
+        this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, (sessionId, call) -> false);
+    }
+
+    public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
+                       ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
+                       RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -52,6 +60,7 @@ public final class AgentConfig {
         }
         this.maxToolArgumentLength = maxToolArgumentLength;
         this.modelRetryPolicy = Objects.requireNonNull(modelRetryPolicy, "modelRetryPolicy must not be null");
+        this.toolApprovalHandler = Objects.requireNonNull(toolApprovalHandler, "toolApprovalHandler must not be null");
     }
 
     public String getSystemPrompt() {
@@ -88,5 +97,9 @@ public final class AgentConfig {
 
     public RetryPolicy getModelRetryPolicy() {
         return modelRetryPolicy;
+    }
+
+    public ToolApprovalHandler getToolApprovalHandler() {
+        return toolApprovalHandler;
     }
 }
