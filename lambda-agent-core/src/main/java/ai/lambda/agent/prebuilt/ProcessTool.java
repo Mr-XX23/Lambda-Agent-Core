@@ -6,6 +6,8 @@ import org.json.JSONObject;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public final class ProcessTool implements AgentTool {
     private static final int MAX_OUTPUT_BYTES = 16 * 1024;
@@ -32,14 +34,21 @@ public final class ProcessTool implements AgentTool {
     @Override public ToolResult execute(ToolInvocationContext context) throws Exception {
         String command = new JSONObject(context.getArgumentsJson()).getString("command");
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        if (!process.waitFor(25, TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            throw new IllegalStateException("Process timed out");
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<byte[]> output = executor.submit(() -> process.getInputStream()
+                    .readNBytes(MAX_OUTPUT_BYTES + 1));
+            if (!process.waitFor(25, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                output.cancel(true);
+                throw new IllegalStateException("Process timed out");
+            }
+            byte[] bytes = output.get(5, TimeUnit.SECONDS);
+            if (bytes.length > MAX_OUTPUT_BYTES) {
+                throw new SecurityException("Process output exceeds the 16 KiB sandbox limit");
+            }
+            return ToolResult.of(new String(bytes));
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
         }
-        byte[] output = process.getInputStream().readNBytes(MAX_OUTPUT_BYTES + 1);
-        if (output.length > MAX_OUTPUT_BYTES) {
-            throw new SecurityException("Process output exceeds the 16 KiB sandbox limit");
-        }
-        return ToolResult.of(new String(output));
     }
 }
