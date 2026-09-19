@@ -7,6 +7,8 @@ import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
 import java.util.Set;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 public final class NetworkFetchTool implements AgentTool {
     private static final int MAX_RESPONSE_BYTES = 32 * 1024;
@@ -29,10 +31,24 @@ public final class NetworkFetchTool implements AgentTool {
         URI uri = (URI) getTypedInputSchema().parse(context.getArgumentsJson());
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
         HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10)).GET().build();
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-        if (response.body().length > MAX_RESPONSE_BYTES) {
-            throw new SecurityException("Network response exceeds the 32 KiB sandbox limit");
+        HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            response.body().close();
+            throw new IllegalStateException("Network request failed with status " + response.statusCode());
         }
-        return ToolResult.of(new String(response.body()));
+        try (InputStream input = response.body();
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int total = 0;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_RESPONSE_BYTES) {
+                    throw new SecurityException("Network response exceeds the 32 KiB sandbox limit");
+                }
+                output.write(buffer, 0, read);
+            }
+            return ToolResult.of(output.toString(java.nio.charset.StandardCharsets.UTF_8));
+        }
     }
 }
