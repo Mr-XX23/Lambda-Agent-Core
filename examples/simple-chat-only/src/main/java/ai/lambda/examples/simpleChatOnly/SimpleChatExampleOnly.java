@@ -15,7 +15,7 @@ public final class SimpleChatExampleOnly {
 
         // 1.2 : Check if API key is set ( OPTIONAL but recommended for better error handling )
         if (apiKey == null || apiKey.isBlank()) {
-            System.err.println("Please set OPENAI_API_KEY environment variable.");
+            System.err.println("Please set GEMINI_API_KEY environment variable.");
             return;
         }
 

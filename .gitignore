@@ -1,5 +1,7 @@
 .idea
 /docs
+!/docs/
+!/docs/SystemInfo.md
 *.iml
 *.log
 *.tmp
