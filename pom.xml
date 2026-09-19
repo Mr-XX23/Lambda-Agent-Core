@@ -61,4 +61,34 @@
             </plugins>
         </pluginManagement>
     </build>
+    <profiles>
+        <profile>
+            <id>api-compatibility</id>
+            <activation>
+                <property><name>compatibilityBaseline</name></property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.23.1</version>
+                        <configuration>
+                            <oldVersion>${compatibilityBaseline}</oldVersion>
+                            <newVersion>${project.version}</newVersion>
+                            <parameter>
+                                <onlyModified>true</onlyModified>
+                            </parameter>
+                            <breakBuildOnModifications>true</breakBuildOnModifications>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals><goal>cmp</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
