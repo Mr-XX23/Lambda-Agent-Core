@@ -9,17 +9,20 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 /** Minimal JDK HTTP bridge; applications can place auth and TLS in their edge. */
 public final class AgentHttpServer implements AutoCloseable {
     private final Agent agent;
     private final HttpServer server;
+    private final ExecutorService executor;
 
     public AgentHttpServer(Agent agent, InetSocketAddress address) throws IOException {
         this.agent = Objects.requireNonNull(agent);
         this.server = HttpServer.create(address, 0);
         server.createContext("/agent/run", this::handleRun);
-        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        executor = Executors.newVirtualThreadPerTaskExecutor();
+        server.setExecutor(executor);
     }
 
     public void start() { server.start(); }
@@ -56,5 +59,6 @@ public final class AgentHttpServer implements AutoCloseable {
     @Override
     public void close() {
         server.stop(0);
+        executor.close();
     }
 }
