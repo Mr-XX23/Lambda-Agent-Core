@@ -71,6 +71,7 @@ public final class Agent {
 
     public AgentResult run(String sessionId, String userInput, CancellationToken cancellationToken) {
         String runId = UUID.randomUUID().toString();
+        TraceContext.activate(runId);
         Instant deadline = Instant.now().plus(config.getRunTimeout());
         for (AgentEventListener listener : listeners) listener.onRunStart(runId, sessionId);
 
@@ -127,6 +128,7 @@ public final class Agent {
                 sessionStore.save(session);
                 AgentResult result = new AgentResult(assistant.getContent(), session, runId, iteration + 1);
                 for (AgentEventListener listener : listeners) listener.onRunEnd(result);
+                TraceContext.clear();
                 return result;
             }
 
@@ -262,6 +264,7 @@ public final class Agent {
                 session, runId, config.getMaxIterations()
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
+        TraceContext.clear();
         return result;
     }
 
