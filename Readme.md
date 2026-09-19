@@ -37,6 +37,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🛡️ Tool Safety:** Tools can require approval and enforce execution timeouts.
 - **🌿 Reliable Workflow Fan-out:** Main workflows support parallel branches with branch-local retries, cancellation propagation, persisted branch state, joins, and resumable approval steps.
 - **📊 Observability:** Trace IDs propagate through agent runs and workflows, with pluggable span exporters, OTLP/HTTP export hooks, and metric recording.
+- **🚀 Deployment Integrations:** The JDK HTTP bridge supports authenticated, bounded agent/workflow requests and SSE result responses; the optional Spring Boot starter provides configuration and dependency-injected REST exposure.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
