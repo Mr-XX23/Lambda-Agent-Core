@@ -12,6 +12,7 @@
     <modules>
         <module>lambda-ai-core</module>
         <module>lambda-agent-core</module>
+        <module>lambda-agent-spring-boot-starter</module>
         <module>examples/simple-chat-only</module>
         <module>examples/simple-chat-with-tools</module>
         <module>examples/simple-chat-with-JSONL-file-based-session-storage</module>
