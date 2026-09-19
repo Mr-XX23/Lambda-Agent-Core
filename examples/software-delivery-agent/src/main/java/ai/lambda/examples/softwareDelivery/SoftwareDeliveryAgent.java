@@ -16,6 +16,7 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A guarded software-delivery agent reference application.
@@ -60,36 +61,13 @@ public final class SoftwareDeliveryAgent {
         var agent = new Agent(config, new InMemorySessionStore());
 
         var checkpoints = new InMemoryCheckpointStore();
-        var workflow = new Workflow(
-                "software-delivery-review",
-                List.of(
-                        new WorkflowStepSpec("repository-baseline",
-                                (context, token) -> inspect(repository, context)),
-                        new WorkflowStepSpec("parallel-verification", Workflow.parallel("verification",
-                                List.of(
-                                        new WorkflowStepSpec("git-state",
-                                                (context, token) -> context.put("gitState",
-                                                        runCheck(repository, List.of("git", "diff", "--check")))),
-                                        new WorkflowStepSpec("build-state",
-                                                (context, token) -> context.put("buildState",
-                                                        runCheck(repository, List.of("mvn", "-q", "test")))
-                                )))),
-                        new WorkflowStepSpec("approval",
-                                new ApprovalWorkflowStep("approve-write-capable-actions",
-                                        (executionId, stepName, context) ->
-                                                "true".equalsIgnoreCase(System.getenv("APPROVE_WORKFLOW")))),
-                        new WorkflowStepSpec("handoff",
-                                (context, token) -> context.put("handoff",
-                                        "Approved for the next implementation stage"))
-                ),
-                checkpoints, true
-        );
+        var workflow = createReviewWorkflow(repository, checkpoints,
+                "true".equalsIgnoreCase(System.getenv("APPROVE_WORKFLOW")));
 
         System.out.println("Software Delivery Agent");
         System.out.println("Repository: " + repository);
         String executionId = "review-" + System.currentTimeMillis();
-        WorkflowResult review = workflow.run(executionId,
-                Map.of("repository", repository.toString()), new CancellationToken());
+        WorkflowResult review = runReview(workflow, executionId, repository);
         System.out.println("Workflow status: " + review.status());
         System.out.println("Workflow details: " + review.checkpoint().state());
         if (review.status() == WorkflowStatus.WAITING_APPROVAL) {
@@ -107,7 +85,40 @@ public final class SoftwareDeliveryAgent {
         }
     }
 
-    private static void inspect(Path repository, WorkflowContext context) throws Exception {
+    static Workflow createReviewWorkflow(Path repository, CheckpointStore checkpoints,
+                                         boolean approvalGranted) {
+        return new Workflow(
+                "software-delivery-review",
+                List.of(
+                        new WorkflowStepSpec("repository-baseline",
+                                (context, token) -> inspect(repository, context)),
+                        new WorkflowStepSpec("parallel-verification", Workflow.parallel("verification",
+                                List.of(
+                                        new WorkflowStepSpec("git-state",
+                                                (context, token) -> context.put("gitState",
+                                                        runCheck(repository, List.of("git", "diff", "--check")))),
+                                        new WorkflowStepSpec("build-state",
+                                                (context, token) -> context.put("buildState",
+                                                        runCheck(repository, mavenTestCommand()))
+                                )))),
+                        new WorkflowStepSpec("approval",
+                                new ApprovalWorkflowStep("approve-write-capable-actions",
+                                        (executionId, stepName, context) ->
+                                                approvalGranted)),
+                        new WorkflowStepSpec("handoff",
+                                (context, token) -> context.put("handoff",
+                                        "Approved for the next implementation stage"))
+                ),
+                checkpoints, true
+        );
+    }
+
+    static WorkflowResult runReview(Workflow workflow, String executionId, Path repository) {
+        return workflow.run(executionId,
+                Map.of("repository", repository.toString()), new CancellationToken());
+    }
+
+    static void inspect(Path repository, WorkflowContext context) throws Exception {
         long files;
         try (var paths = Files.walk(repository)) {
             files = paths
@@ -121,16 +132,37 @@ public final class SoftwareDeliveryAgent {
         context.put("repositoryReady", true);
     }
 
-    private static String runCheck(Path repository, List<String> command) throws Exception {
+    static String runCheck(Path repository, List<String> command) throws Exception {
+        if (!List.of(
+                List.of("git", "diff", "--check"),
+                List.of("mvn", "-q", "test"),
+                mavenTestCommand()
+        ).contains(command)) {
+            throw new SecurityException("Verification command is not allowlisted: " + command);
+        }
         Process process = new ProcessBuilder(command)
                 .directory(repository.toFile())
                 .redirectErrorStream(true)
                 .start();
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         AtomicReference<Exception> readerFailure = new AtomicReference<>();
+        AtomicBoolean outputExceeded = new AtomicBoolean();
         Thread reader = Thread.startVirtualThread(() -> {
             try (InputStream input = process.getInputStream()) {
-                input.transferTo(output);
+                byte[] buffer = new byte[4096];
+                int total = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    int remaining = 8_192 - total;
+                    if (read > remaining) {
+                        output.write(buffer, 0, Math.max(remaining, 0));
+                        outputExceeded.set(true);
+                        process.destroyForcibly();
+                        break;
+                    }
+                    output.write(buffer, 0, read);
+                    total += read;
+                }
             } catch (Exception failure) {
                 readerFailure.set(failure);
             }
@@ -144,13 +176,19 @@ public final class SoftwareDeliveryAgent {
         if (readerFailure.get() != null) {
             throw new IllegalStateException("Could not read verification output", readerFailure.get());
         }
-        String result = output.toString(java.nio.charset.StandardCharsets.UTF_8);
-        if (result.length() > 8_192) {
-            result = result.substring(0, 8_192) + "\n[output truncated]";
+        if (outputExceeded.get()) {
+            throw new SecurityException("Verification output exceeds the 8 KiB limit: " + command);
         }
+        String result = output.toString(java.nio.charset.StandardCharsets.UTF_8);
         if (process.exitValue() != 0) {
             throw new IllegalStateException("Verification failed (" + process.exitValue() + "):\n" + result);
         }
         return result.isBlank() ? "passed" : "passed:\n" + result.trim();
+    }
+
+    private static List<String> mavenTestCommand() {
+        String executable = System.getProperty("os.name", "").toLowerCase().contains("win")
+                ? "mvn.cmd" : "mvn";
+        return List.of(executable, "-q", "test");
     }
 }
