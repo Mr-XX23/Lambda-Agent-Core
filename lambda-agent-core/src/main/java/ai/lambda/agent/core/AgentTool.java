@@ -24,6 +24,10 @@ public interface AgentTool {
         return ToolPolicy.unrestricted();
     }
 
+    default ToolArgumentValidator getArgumentValidator() {
+        return argumentsJson -> {};
+    }
+
     /**
      * Execute the tool.
      *
