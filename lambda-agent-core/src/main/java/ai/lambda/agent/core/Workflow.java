@@ -51,18 +51,27 @@ public final class Workflow {
             return new WorkflowResult(executionId, checkpoint.status(), checkpoint);
         }
 
-        WorkflowContext context = new WorkflowContext(existing.isEmpty() ? initialState : checkpoint.state());
+        Map<String, Object> state = existing.isEmpty() ? initialState : checkpoint.state();
+        WorkflowContext context = new WorkflowContext(state);
+        context.put("executionId", executionId);
         for (int stepIndex = checkpoint.nextStep(); stepIndex < steps.size(); stepIndex++) {
             cancellationToken.throwIfCancelled();
             try {
                 WorkflowStepSpec specification = specifications.get(stepIndex);
                 if (specification.condition().test(context)) {
-                    executeWithPolicy(specification, context, cancellationToken);
+                    executeWithPolicyForBranch(specification, context, cancellationToken);
                 }
                 checkpoint = new WorkflowCheckpoint(executionId, name, stepIndex + 1,
                         stepIndex + 1 == steps.size() ? WorkflowStatus.COMPLETED : WorkflowStatus.RUNNING,
                         context.getState(), null, checkpoint.version() + 1);
                 checkpointStore.save(checkpoint, checkpoint.version() - 1);
+            } catch (ApprovalRequiredException approval) {
+                context.put("approval.requestedStep", stepIndex);
+                checkpoint = new WorkflowCheckpoint(executionId, name, stepIndex,
+                        WorkflowStatus.WAITING_APPROVAL, context.getState(), approval.getMessage(),
+                        checkpoint.version() + 1);
+                checkpointStore.save(checkpoint, checkpoint.version() - 1);
+                return new WorkflowResult(executionId, checkpoint.status(), checkpoint);
             } catch (Exception error) {
                 checkpoint = new WorkflowCheckpoint(executionId, name, stepIndex,
                         WorkflowStatus.FAILED, context.getState(), error.getMessage(), checkpoint.version() + 1);
@@ -73,7 +82,11 @@ public final class Workflow {
         return new WorkflowResult(executionId, checkpoint.status(), checkpoint);
     }
 
-    private static void executeWithPolicy(WorkflowStepSpec specification, WorkflowContext context,
+    public static WorkflowStep parallel(String joinName, List<WorkflowStepSpec> branches) {
+        return new ParallelWorkflowStep(joinName, branches);
+    }
+
+    static void executeWithPolicyForBranch(WorkflowStepSpec specification, WorkflowContext context,
                                            CancellationToken cancellationToken) throws Exception {
         Exception lastError = null;
         for (int attempt = 1; attempt <= specification.retryPolicy().maxAttempts(); attempt++) {

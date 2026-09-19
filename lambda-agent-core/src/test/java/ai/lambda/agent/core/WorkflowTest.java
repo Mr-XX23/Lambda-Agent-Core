@@ -69,4 +69,40 @@ class WorkflowTest {
                 () -> workflow.run("run-1", Map.of(), token));
         assertEquals(1, store.load("run-1").orElseThrow().nextStep());
     }
+
+    @Test
+    void parallelBranchesJoinAndPersistBranchState() {
+        InMemoryCheckpointStore store = new InMemoryCheckpointStore();
+        WorkflowStep parallel = Workflow.parallel("fanout", List.of(
+                new WorkflowStepSpec("left", (context, token) -> context.put("value", "left")),
+                new WorkflowStepSpec("right", (context, token) -> context.put("value", "right"))));
+        Workflow workflow = new Workflow("parallel", List.of(parallel), store);
+
+        WorkflowResult result = workflow.run("parallel-1", Map.of(), new CancellationToken());
+
+        assertEquals(WorkflowStatus.COMPLETED, result.status());
+        assertEquals(true, result.checkpoint().state().get("parallel.fanout.joined"));
+        assertTrue(result.checkpoint().state().get("parallel.fanout") instanceof Map);
+    }
+
+    @Test
+    void approvalIsPersistedAndResumesAtSameStep() {
+        InMemoryCheckpointStore store = new InMemoryCheckpointStore();
+        AtomicBoolean approved = new AtomicBoolean();
+        WorkflowStep approval = new ApprovalWorkflowStep("deploy",
+                (executionId, stepName, context) -> approved.get());
+        Workflow workflow = new Workflow("approval", List.of(
+                approval,
+                (context, token) -> context.put("deployed", true)), store);
+
+        WorkflowResult waiting = workflow.run("approval-1", Map.of(), new CancellationToken());
+        assertEquals(WorkflowStatus.WAITING_APPROVAL, waiting.status());
+        assertEquals(0, waiting.checkpoint().nextStep());
+        assertEquals(0, waiting.checkpoint().state().get("approval.requestedStep"));
+
+        approved.set(true);
+        WorkflowResult completed = workflow.run("approval-1", Map.of(), new CancellationToken());
+        assertEquals(WorkflowStatus.COMPLETED, completed.status());
+        assertEquals(true, completed.checkpoint().state().get("deployed"));
+    }
 }

@@ -13,15 +13,15 @@ public final class WorkflowContext {
         }
     }
 
-    public Map<String, Object> getState() {
+    public synchronized Map<String, Object> getState() {
         return state;
     }
 
-    public Object get(String key) {
+    public synchronized Object get(String key) {
         return state.get(key);
     }
 
-    public void put(String key, Object value) {
+    public synchronized void put(String key, Object value) {
         state.put(key, value);
     }
 }
