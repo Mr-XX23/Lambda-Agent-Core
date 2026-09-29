@@ -15,11 +15,33 @@ import static org.junit.jupiter.api.Assertions.*;
 class JsonlSessionStoreTest {
 
     @TempDir
-    Path dir;
+    Path storageDir;
+
+    @Test
+    void roundTripsMessagesAndMetadata() {
+        JsonlSessionStore store = new JsonlSessionStore(storageDir);
+        AgentSession session = new AgentSession("session-1");
+        session.getMessages().add(new Message(Role.USER, "hello", null));
+        session.getMetadata().put("count", 2);
+
+        store.save(session);
+        AgentSession loaded = store.loadOrCreate("session-1");
+
+        assertEquals("hello", loaded.getMessages().get(0).getContent());
+        assertEquals(2, loaded.getMetadata().get("count"));
+    }
+
+    @Test
+    void rejectsPathTraversalSessionIds() {
+        JsonlSessionStore store = new JsonlSessionStore(storageDir);
+
+        assertThrows(IllegalArgumentException.class, () -> store.loadOrCreate("../outside"));
+        assertThrows(IllegalArgumentException.class, () -> store.loadOrCreate("a/b"));
+    }
 
     @Test
     void unknownSessionStartsEmpty() {
-        AgentSession session = new JsonlSessionStore(dir).loadOrCreate("new");
+        AgentSession session = new JsonlSessionStore(storageDir).loadOrCreate("new");
 
         assertEquals("new", session.getId());
         assertTrue(session.getMessages().isEmpty());
@@ -27,7 +49,7 @@ class JsonlSessionStoreTest {
     }
 
     @Test
-    void savedSessionSurvivesReload() {
+    void toolCallsSignaturesAndListMetadataSurviveReload() {
         AgentSession session = new AgentSession("todo");
         session.getMessages().add(new Message(Role.SYSTEM, "sys", null));
         session.getMessages().add(new Message(Role.USER, "add milk", null));
@@ -36,8 +58,8 @@ class JsonlSessionStoreTest {
         session.getMessages().add(new Message(Role.TOOL, "Added", "c1", "add_todo", null));
         session.getMetadata().put("todos", new ArrayList<>(List.of("milk", "eggs")));
 
-        new JsonlSessionStore(dir).save(session);
-        AgentSession loaded = new JsonlSessionStore(dir).loadOrCreate("todo");
+        new JsonlSessionStore(storageDir).save(session);
+        AgentSession loaded = new JsonlSessionStore(storageDir).loadOrCreate("todo");
 
         assertEquals(4, loaded.getMessages().size());
         ToolCall call = loaded.getMessages().get(2).getToolCalls().get(0);

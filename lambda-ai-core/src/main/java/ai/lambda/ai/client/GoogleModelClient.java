@@ -13,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -46,6 +47,14 @@ public final class GoogleModelClient implements ModelClient {
         this.httpClient = HttpRetry.newClient(options);
     }
 
+    /** What has arrived so far while reading a streamed response. */
+    private static final class StreamState {
+        final StringBuilder text = new StringBuilder();
+        final List<ToolCall> toolCalls = new ArrayList<>();
+        ModelUsage usage = ModelUsage.empty();
+        FinishReason finishReason = FinishReason.UNKNOWN;
+    }
+
     @Override
     public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta) {
         JSONObject requestBody = buildRequestBody(messages, tools);
@@ -53,13 +62,12 @@ public final class GoogleModelClient implements ModelClient {
 
         HttpResponse<Stream<String>> response = HttpRetry.send(httpClient, request, linesOrErrorBody(), options, "Gemini");
 
-        StringBuilder fullText = new StringBuilder();
-        List<ToolCall> allToolCalls = new ArrayList<>();
+        StreamState state = new StreamState();
         StringBuilder sseBuffer = new StringBuilder();
 
         try (Stream<String> lines = response.body()) {
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("Gemini API error: " + response.statusCode() + " "
+            if (response.statusCode() >= 400) {
+                throw new RuntimeException("Gemini streaming error: " + response.statusCode() + " "
                         + lines.collect(Collectors.joining("\n")));
             }
 
@@ -68,7 +76,7 @@ public final class GoogleModelClient implements ModelClient {
                 if (trimmed.isEmpty()) {
                     // SSE event separator: process what we have in the buffer
                     if (sseBuffer.length() > 0) {
-                        processSseChunk(sseBuffer.toString(), fullText, allToolCalls, onDelta);
+                        processSseChunk(sseBuffer.toString(), state, onDelta);
                         sseBuffer.setLength(0);
                     }
                 } else if (trimmed.startsWith("data: ")) {
@@ -79,41 +87,47 @@ public final class GoogleModelClient implements ModelClient {
 
         // Final chunk if no trailing newline
         if (sseBuffer.length() > 0) {
-            processSseChunk(sseBuffer.toString(), fullText, allToolCalls, onDelta);
+            processSseChunk(sseBuffer.toString(), state, onDelta);
         }
 
-        if (fullText.length() == 0 && allToolCalls.isEmpty()) {
+        if (state.text.length() == 0 && state.toolCalls.isEmpty()) {
             System.out.println("[DEBUG] Warning: Gemini returned an empty response. Status: " + response.statusCode());
         }
 
         // The tool calls must stay on the message: Gemini needs to see its own functionCall
         // (with its thoughtSignature) before the matching functionResponse on the next turn.
-        Message assistantMessage = new Message(Role.ASSISTANT, fullText.toString(), null, null, allToolCalls);
-        return new ChatResponse(assistantMessage, allToolCalls);
+        Message assistantMessage = new Message(Role.ASSISTANT, state.text.toString(), null, null, state.toolCalls);
+        return new ChatResponse(assistantMessage, state.toolCalls,
+                state.toolCalls.isEmpty() ? state.finishReason : FinishReason.TOOL_CALLS, state.usage);
     }
 
     // Streams lines on success; on an error status, reads the whole body so it can go in the exception.
     private static HttpResponse.BodyHandler<Stream<String>> linesOrErrorBody() {
-        return info -> info.statusCode() == 200
+        return info -> info.statusCode() < 400
                 ? HttpResponse.BodySubscribers.ofLines(StandardCharsets.UTF_8)
                 : HttpResponse.BodySubscribers.mapping(
                         HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8), Stream::of);
     }
 
-    private void processSseChunk(String jsonData, StringBuilder fullText, List<ToolCall> allToolCalls, Consumer<String> onDelta) {
+    private void processSseChunk(String jsonData, StreamState state, Consumer<String> onDelta) {
         if (jsonData.equals("[DONE]")) return;
         try {
             JSONObject chunk = new JSONObject(jsonData);
+            if (chunk.has("usageMetadata")) {
+                state.usage = parseUsage(chunk);
+            }
             JSONArray candidates = chunk.optJSONArray("candidates");
             if (candidates != null && !candidates.isEmpty()) {
                 JSONObject first = candidates.getJSONObject(0);
 
+                String reason = first.optString("finishReason", "");
+                if (!reason.isEmpty()) {
+                    state.finishReason = toFinishReason(reason, false);
+                }
+
                 // Debug finish reason if no content
-                if (!first.has("content")) {
-                    String reason = first.optString("finishReason", "UNKNOWN");
-                    if (!"STOP".equals(reason)) {
-                        System.out.println("[DEBUG] Candidate finish reason: " + reason);
-                    }
+                if (!first.has("content") && !"STOP".equals(reason)) {
+                    System.out.println("[DEBUG] Candidate finish reason: " + (reason.isEmpty() ? "UNKNOWN" : reason));
                 }
 
                 JSONObject content = first.optJSONObject("content");
@@ -124,14 +138,12 @@ public final class GoogleModelClient implements ModelClient {
                             JSONObject p = parts.getJSONObject(i);
                             if (p.has("text")) {
                                 String delta = p.getString("text");
-                                if (delta != null) {
-                                    fullText.append(delta);
-                                    if (onDelta != null) {
-                                        onDelta.accept(delta);
-                                    }
+                                state.text.append(delta);
+                                if (onDelta != null) {
+                                    onDelta.accept(delta);
                                 }
                             } else if (p.has("functionCall")) {
-                                allToolCalls.add(parseFunctionCall(p));
+                                state.toolCalls.add(parseFunctionCall(p));
                             }
                         }
                     }
@@ -321,7 +333,8 @@ public final class GoogleModelClient implements ModelClient {
         }
 
         Message assistantMessage = new Message(Role.ASSISTANT, assistantText.toString(), null, null, toolCalls);
-        return new ChatResponse(assistantMessage, toolCalls);
+        return new ChatResponse(assistantMessage, toolCalls,
+                toFinishReason(first.optString("finishReason", ""), !toolCalls.isEmpty()), parseUsage(body));
     }
 
     @Override
@@ -337,5 +350,29 @@ public final class GoogleModelClient implements ModelClient {
 
         JSONObject body = new JSONObject(response.body());
         return body.optInt("totalTokens", 0);
+    }
+
+    static ModelUsage parseUsage(JSONObject body) {
+        JSONObject usage = body.optJSONObject("usageMetadata");
+        if (usage == null) {
+            return ModelUsage.empty();
+        }
+        return new ModelUsage(usage.optLong("promptTokenCount", 0),
+                usage.optLong("candidatesTokenCount", 0),
+                usage.optLong("totalTokenCount", 0));
+    }
+
+    static FinishReason toFinishReason(String reason, boolean hasToolCalls) {
+        if (hasToolCalls) {
+            return FinishReason.TOOL_CALLS;
+        }
+        return switch (reason == null ? "" : reason.toUpperCase(Locale.ROOT)) {
+            case "STOP" -> FinishReason.STOP;
+            case "MAX_TOKENS", "RECITATION" -> FinishReason.LENGTH;
+            case "SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII" ->
+                    FinishReason.CONTENT_FILTER;
+            case "MALFORMED_FUNCTION_CALL" -> FinishReason.TOOL_CALLS;
+            default -> FinishReason.UNKNOWN;
+        };
     }
 }

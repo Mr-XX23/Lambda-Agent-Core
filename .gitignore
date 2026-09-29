@@ -1,5 +1,7 @@
 .idea
 /docs
+!/docs/
+!/docs/SystemInfo.md
 *.iml
 *.log
 *.tmp
@@ -36,5 +38,10 @@ buildNumber.properties
 # OS generated files
 .DS_Store
 Thumbs.db
-.jsonl
-.vscode
+
+# Agent session data written by the examples
+*.jsonl
+.sessions/
+
+# VS Code
+.vscode/

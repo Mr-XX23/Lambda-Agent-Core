@@ -138,7 +138,7 @@ class ContextStrategyTest {
         assertEquals(4, kept.size());
         String shortened = kept.get(3).getContent();
         assertTrue(shortened.startsWith("xxx") && shortened.endsWith("zzz"), shortened);
-        assertTrue(shortened.contains("characters truncated"), shortened);
+        assertTrue(shortened.contains("Result truncated"), shortened);
         assertTrue(new FakeModelClient().countTokens(kept) <= 100, "must fit the budget");
         assertEquals(200, history.get(3).getContent().length(), "the stored history is not modified");
     }

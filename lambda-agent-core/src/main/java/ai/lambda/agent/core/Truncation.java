@@ -26,7 +26,7 @@ final class Truncation {
 
         int omitted = text.length() - head - tail;
         return text.substring(0, head)
-                + "\n\n[... " + omitted + " characters truncated ...]\n\n"
+                + "\n\n[lambda-agent-core] Result truncated: " + omitted + " characters omitted.\n\n"
                 + text.substring(text.length() - tail);
     }
 }

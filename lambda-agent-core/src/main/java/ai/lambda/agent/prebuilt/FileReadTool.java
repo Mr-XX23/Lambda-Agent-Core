@@ -3,12 +3,24 @@ package ai.lambda.agent.prebuilt;
 import ai.lambda.agent.core.AgentTool;
 import ai.lambda.agent.core.ToolInvocationContext;
 import ai.lambda.agent.core.ToolResult;
+import ai.lambda.agent.core.ToolArgumentValidator;
 import org.json.JSONObject;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 
 public final class FileReadTool implements AgentTool {
+    private static final long MAX_FILE_BYTES = 1024 * 1024;
+    private final Path root;
+
+    public FileReadTool() {
+        this(Path.of("."));
+    }
+
+    public FileReadTool(Path root) {
+        this.root = Objects.requireNonNull(root, "root must not be null").toAbsolutePath().normalize();
+    }
 
     @Override
     public String getName() { return "read_file"; }
@@ -34,12 +46,41 @@ public final class FileReadTool implements AgentTool {
         JSONObject args = new JSONObject(context.getArgumentsJson());
         String filePathStr = args.getString("filePath");
 
-        Path path = Path.of(filePathStr);
+        Path path = resolveSafePath(filePathStr, false);
         if (!Files.exists(path)) {
             throw new Exception("File does not exist: " + filePathStr);
+        }
+        if (Files.size(path) > MAX_FILE_BYTES) {
+            throw new SecurityException("File exceeds the 1 MiB sandbox limit");
         }
 
         String content = Files.readString(path);
         return ToolResult.of(content);
+    }
+
+    private Path resolveSafePath(String filePath, boolean allowMissing) throws Exception {
+        Path candidate = root.resolve(filePath).normalize();
+        if (!candidate.startsWith(root)) {
+            throw new SecurityException("File path is outside the configured root");
+        }
+        if (!Files.exists(candidate) && !allowMissing) {
+            throw new Exception("File does not exist: " + filePath);
+        }
+        Path realRoot = root.toRealPath();
+        Path realPath = candidate.toRealPath();
+        if (!realPath.startsWith(realRoot)) {
+            throw new SecurityException("File path resolves outside the configured root");
+        }
+        return realPath;
+    }
+
+    @Override
+    public ToolArgumentValidator getArgumentValidator() {
+        return argumentsJson -> {
+            JSONObject args = new JSONObject(argumentsJson);
+            if (args.optString("filePath", "").isBlank()) {
+                throw new IllegalArgumentException("filePath is required");
+            }
+        };
     }
 }

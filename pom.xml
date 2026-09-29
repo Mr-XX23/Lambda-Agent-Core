@@ -12,23 +12,34 @@
     <modules>
         <module>lambda-ai-core</module>
         <module>lambda-agent-core</module>
+        <module>lambda-agent-spring-boot-starter</module>
         <module>examples/simple-chat-only</module>
         <module>examples/simple-chat-with-tools</module>
         <module>examples/simple-chat-with-JSONL-file-based-session-storage</module>
         <module>examples/todo-agent</module>
         <module>examples/simple-history-truncation</module>
         <module>examples/simple-streaming-chat</module>
+        <module>examples/software-delivery-agent</module>
     </modules>
 
     <properties>
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>25</java.version>
+        <junit.version>5.11.4</junit.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>ai.lambda</groupId>
                 <artifactId>lambda-ai-core</artifactId>
@@ -38,12 +49,6 @@
                 <groupId>ai.lambda</groupId>
                 <artifactId>lambda-agent-core</artifactId>
                 <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.junit.jupiter</groupId>
-                <artifactId>junit-jupiter</artifactId>
-                <version>5.11.4</version>
-                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -59,4 +64,34 @@
             </plugins>
         </pluginManagement>
     </build>
+    <profiles>
+        <profile>
+            <id>api-compatibility</id>
+            <activation>
+                <property><name>compatibilityBaseline</name></property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.siom79.japicmp</groupId>
+                        <artifactId>japicmp-maven-plugin</artifactId>
+                        <version>0.23.1</version>
+                        <configuration>
+                            <oldVersion>${compatibilityBaseline}</oldVersion>
+                            <newVersion>${project.version}</newVersion>
+                            <parameter>
+                                <onlyModified>true</onlyModified>
+                            </parameter>
+                            <breakBuildOnModifications>true</breakBuildOnModifications>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals><goal>cmp</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -4,6 +4,10 @@ import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.ToolCall;
 
 public interface AgentEventListener {
+    default void onRunStart(String runId, String sessionId) {}
+    default void onRunEnd(AgentResult result) {}
+    default void onModelResponse(ai.lambda.ai.core.ChatResponse response) {}
+    default void onModelRetry(int attempt, Exception error, java.time.Duration delay) {}
     // Fired when the agent begins a new model call loop
     default void onIterationStart(int iteration) {}
 
@@ -18,6 +22,7 @@ public interface AgentEventListener {
 
     // Fired if a tool throws an exception
     default void onToolError(ToolCall call, Exception error) {}
+    default void onToolAudit(ToolAuditEvent event) {}
 
     // Fired when a new text chunk is received from the model (streaming)
     default void onAssistantDelta(String delta) {}

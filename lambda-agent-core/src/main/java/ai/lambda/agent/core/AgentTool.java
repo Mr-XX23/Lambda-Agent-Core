@@ -20,6 +20,22 @@ public interface AgentTool {
      */
     String getJsonSchema();
 
+    default ToolPolicy getPolicy() {
+        return ToolPolicy.unrestricted();
+    }
+
+    default java.util.Set<ToolCapability> getCapabilities() {
+        return getPolicy().capabilities();
+    }
+
+    default ToolArgumentValidator getArgumentValidator() {
+        return argumentsJson -> {};
+    }
+
+    default TypedToolInput<?> getTypedInputSchema() {
+        return null;
+    }
+
     /**
      * Execute the tool.
      *

@@ -1,11 +1,18 @@
 package ai.lambda.agent.core;
 
 import ai.lambda.agent.prebuilt.EchoTool;
+import ai.lambda.ai.core.ChatResponse;
 import ai.lambda.ai.core.Message;
+import ai.lambda.ai.core.ModelClient;
 import ai.lambda.ai.core.Role;
+import ai.lambda.ai.core.ToolCall;
+import ai.lambda.ai.core.ToolSchema;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -104,18 +111,36 @@ class AgentTest {
 
         RuntimeException e = assertThrows(RuntimeException.class, () -> agent.run(SESSION, "try"));
 
-        assertEquals("boom", e.getCause().getMessage());
+        assertEquals("boom", rootCause(e).getMessage());
+    }
+
+    private static Throwable rootCause(Throwable error) {
+        while (error.getCause() != null) error = error.getCause();
+        return error;
     }
 
     @Test
-    void stopsAfterMaxIterations() {
-        var model = new FakeModelClient();
-        for (int i = 0; i < 5; i++) model.replyToolCall("c" + i, "echo", "{\"text\":\"again\"}");
+    void returnsSafetyStopAfterMaxIterations() {
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "", null),
+                        List.of(new ToolCall("call", "missing", "{}")));
+            }
 
-        AgentResult result = agent(model, List.of(new EchoTool()), null).run(SESSION, "loop forever");
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                return chat(messages, tools);
+            }
+        };
 
-        assertTrue(result.getFinalText().contains("max iterations"), result.getFinalText());
-        assertEquals(5, model.requests.size());
+        Agent agent = new Agent(new AgentConfig("system", model, List.of(), 2),
+                new InMemorySessionStore());
+
+        AgentResult result = agent.run("session", "hello");
+
+        assertEquals("[lambda-agent-core] Stopped after max iterations.", result.getFinalText());
+        assertEquals(2, result.getSession().getMessages().stream()
+                .filter(message -> message.getRole() == Role.ASSISTANT).count());
     }
 
     @Test
@@ -137,20 +162,37 @@ class AgentTest {
     }
 
     @Test
-    void largeToolResultIsShortenedInHistoryButListenersGetAllOfIt() {
+    void withContextStrategyKeepsTheRestOfTheConfig() {
+        var model = new FakeModelClient();
+        var config = new AgentConfig("sys", model, List.of(), 3, ToolErrorStrategy.THROW,
+                Duration.ofSeconds(7), 99, RetryPolicy.none());
+
+        AgentConfig trimmed = config.withContextStrategy(new SlidingWindowStrategy(4));
+
+        assertInstanceOf(SlidingWindowStrategy.class, trimmed.getContextStrategy());
+        assertEquals(ToolErrorStrategy.THROW, trimmed.getToolErrorStrategy());
+        assertEquals(Duration.ofSeconds(7), trimmed.getRunTimeout());
+        assertEquals(99, trimmed.getMaxToolArgumentLength());
+        assertInstanceOf(NoOpStrategy.class, config.getContextStrategy(), "the original is unchanged");
+    }
+
+    @Test
+    void largeToolResultKeepsStartAndEndInHistoryButListenersGetAllOfIt() {
         AgentTool bigTool = new AgentTool() {
             public String getName() { return "big"; }
             public String getDescription() { return "Returns a lot of text."; }
             public String getJsonSchema() { return "{\"type\":\"object\",\"properties\":{}}"; }
-            public ToolResult execute(ToolInvocationContext context) { return ToolResult.of("a".repeat(1_000)); }
+            public ToolPolicy getPolicy() { return new ToolPolicy(false, Duration.ofSeconds(5), 100); }
+            public ToolResult execute(ToolInvocationContext context) {
+                return ToolResult.of("S".repeat(500) + "E".repeat(500));
+            }
         };
         var model = new FakeModelClient().replyToolCall("c1", "big", "{}").replyText("done");
-        var config = new AgentConfig("sys", model, List.of(bigTool), 5).withMaxToolResultChars(100);
-        var agent = new Agent(config, new InMemorySessionStore());
+        var agent = new Agent(new AgentConfig("sys", model, List.of(bigTool), 5), new InMemorySessionStore());
         int[] seenByListener = {0};
         agent.addListener(new AgentEventListener() {
             @Override
-            public void onToolEnd(ai.lambda.ai.core.ToolCall call, ToolResult result) {
+            public void onToolEnd(ToolCall call, ToolResult result) {
                 seenByListener[0] = result.getContent().length();
             }
         });
@@ -158,7 +200,8 @@ class AgentTest {
         AgentResult result = agent.run(SESSION, "go");
 
         String stored = result.getSession().getMessages().get(3).getContent();
-        assertTrue(stored.contains("900 characters truncated"), stored);
+        assertTrue(stored.startsWith("SSS") && stored.endsWith("EEE"), stored);
+        assertTrue(stored.contains("Result truncated: 900 characters omitted."), stored);
         assertEquals(1_000, seenByListener[0]);
     }
 
@@ -175,5 +218,201 @@ class AgentTest {
         for (List<Message> request : model.requests) {
             ContextStrategyTest.assertValidForModels(request);
         }
+    }
+
+    @Test
+    void supportsCancellationBeforeModelCall() {
+        CancellationToken token = new CancellationToken();
+        token.cancel();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                fail("Model must not be called after cancellation");
+                return null;
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                return chat(messages, tools);
+            }
+        };
+        Agent agent = new Agent(new AgentConfig("system", model), new InMemorySessionStore());
+
+        assertThrows(java.util.concurrent.CancellationException.class,
+                () -> agent.run("session", "hello", token));
+    }
+
+    @Test
+    void reportsRunMetadataToResultAndListeners() {
+        List<String> runIds = new java.util.ArrayList<>();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "done", null), List.of());
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                return chat(messages, tools);
+            }
+        };
+        Agent agent = new Agent(new AgentConfig("system", model), new InMemorySessionStore());
+        agent.addListener(new AgentEventListener() {
+            @Override
+            public void onRunStart(String runId, String sessionId) {
+                runIds.add(runId);
+            }
+        });
+
+        AgentResult result = agent.run("session", "hello");
+
+        assertEquals(1, runIds.size());
+        assertEquals(runIds.get(0), result.getRunId());
+        assertEquals(1, result.getIterations());
+    }
+
+    @Test
+    void rejectsInvalidToolDefinitionsAtConstruction() {
+        AgentTool invalid = new AgentTool() {
+            public String getName() { return "invalid"; }
+            public String getDescription() { return "invalid"; }
+            public String getJsonSchema() { return "{not-json"; }
+            public ToolResult execute(ToolInvocationContext context) { return ToolResult.of(""); }
+        };
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) { return null; }
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) { return null; }
+        };
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new Agent(new AgentConfig("system", model, List.of(invalid), 1),
+                        new InMemorySessionStore()));
+    }
+
+    @Test
+    void blocksUnapprovedToolCalls() {
+        AtomicInteger executions = new AtomicInteger();
+        AgentTool tool = new AgentTool() {
+            public String getName() { return "write"; }
+            public String getDescription() { return "writes"; }
+            public String getJsonSchema() { return "{\"type\":\"object\"}"; }
+            public ToolPolicy getPolicy() { return new ToolPolicy(true, Duration.ofSeconds(1)); }
+            public ToolResult execute(ToolInvocationContext context) {
+                executions.incrementAndGet();
+                return ToolResult.of("written");
+            }
+        };
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "", null),
+                        List.of(new ToolCall("call", "write", "{}")));
+            }
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) { return chat(messages, tools); }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(tool), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.none(), (session, call) -> false);
+
+        AgentResult result = new Agent(config, new InMemorySessionStore()).run("session", "write");
+
+        assertEquals(0, executions.get());
+        assertTrue(result.getSession().getMessages().stream()
+                .anyMatch(message -> message.getContent().contains("not approved")));
+    }
+
+    @Test
+    void validatesArgumentsAndTruncatesLargeResults() {
+        AgentTool tool = new AgentTool() {
+            public String getName() { return "bounded"; }
+            public String getDescription() { return "bounded"; }
+            public String getJsonSchema() { return "{\"type\":\"object\"}"; }
+            public ToolPolicy getPolicy() { return new ToolPolicy(false, Duration.ofSeconds(1), 5); }
+            public ToolArgumentValidator getArgumentValidator() {
+                return arguments -> {
+                    if (!arguments.contains("\"ok\"")) throw new IllegalArgumentException("missing ok");
+                };
+            }
+            public ToolResult execute(ToolInvocationContext context) {
+                return ToolResult.of("123456789");
+            }
+        };
+        AtomicInteger calls = new AtomicInteger();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "done", null), List.of());
+            }
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                if (calls.incrementAndGet() == 1) {
+                    return new ChatResponse(new Message(Role.ASSISTANT, "", null),
+                            List.of(new ToolCall("call", "bounded", "{\"ok\":true}")));
+                }
+                return chat(messages, tools);
+            }
+        };
+
+        AgentResult result = new Agent(new AgentConfig("system", model, List.of(tool), 2),
+                new InMemorySessionStore()).run("session", "run");
+
+        assertTrue(result.getSession().getMessages().stream()
+                .anyMatch(message -> message.getContent().contains("Result truncated")));
+    }
+
+    @Test
+    void retriesTransientModelFailureAndNotifiesListener() {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicInteger retries = new AtomicInteger();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return new ChatResponse(new Message(Role.ASSISTANT, "done", null), List.of());
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                if (calls.incrementAndGet() == 1) {
+                    throw new RuntimeException("temporary");
+                }
+                return chat(messages, tools);
+            }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.exponential(2, Duration.ZERO));
+        Agent agent = new Agent(config, new InMemorySessionStore());
+        agent.addListener(new AgentEventListener() {
+            @Override
+            public void onModelRetry(int attempt, Exception error, Duration delay) {
+                retries.incrementAndGet();
+            }
+        });
+
+        AgentResult result = agent.run("session", "hello");
+
+        assertEquals("done", result.getFinalText());
+        assertEquals(2, calls.get());
+        assertEquals(1, retries.get());
+    }
+
+    @Test
+    void doesNotRetryWhenPolicyAllowsOnlyOneAttempt() {
+        AtomicInteger calls = new AtomicInteger();
+        ModelClient model = new ModelClient() {
+            public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
+                return null;
+            }
+
+            public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools,
+                                           Consumer<String> onDelta) {
+                calls.incrementAndGet();
+                throw new RuntimeException("permanent");
+            }
+        };
+        AgentConfig config = new AgentConfig("system", model, List.of(), 1,
+                ToolErrorStrategy.SEND_TO_MODEL, Duration.ofSeconds(1), 1024,
+                RetryPolicy.none());
+        Agent agent = new Agent(config, new InMemorySessionStore());
+
+        assertThrows(RuntimeException.class, () -> agent.run("session", "hello"));
+        assertEquals(1, calls.get());
     }
 }

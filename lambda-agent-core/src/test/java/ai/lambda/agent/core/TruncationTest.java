@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TruncationTest {
 
+    private static final String NOTE = "\\s*\\[lambda-agent-core] Result truncated: \\d+ characters omitted\\.\\s*";
+
     @Test
     void shortTextIsUnchanged() {
         assertEquals("hello", Truncation.keepHeadAndTail("hello", 5));
@@ -19,13 +21,14 @@ class TruncationTest {
 
         assertTrue(out.startsWith("H".repeat(100)), out);
         assertTrue(out.endsWith("T".repeat(50)), out);
-        assertTrue(out.contains("[... 850 characters truncated ...]"), out);
-        assertEquals(150, out.replaceAll("\\s*\\[\\.\\.\\. \\d+ characters truncated \\.\\.\\.]\\s*", "").length());
+        assertTrue(out.contains("Result truncated: 850 characters omitted."), out);
+        assertEquals(150, out.replaceAll(NOTE, "").length());
     }
 
     @Test
     void zeroLimitLeavesOnlyTheNote() {
-        assertEquals("\n\n[... 3 characters truncated ...]\n\n", Truncation.keepHeadAndTail("abc", 0));
+        assertEquals("\n\n[lambda-agent-core] Result truncated: 3 characters omitted.\n\n",
+                Truncation.keepHeadAndTail("abc", 0));
     }
 
     @Test
