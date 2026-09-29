@@ -97,3 +97,33 @@ without stopping the others.
 Definition files go in one folder: `<name>.md` or `<name>/agent.md`, with `name`,
 `description`, optional `tools` (a list) and optional `model` (a key of the map passed to
 `Subagents.load(dir, models)`, or `inherit`). Runnable example: `examples/multi-agent`.
+
+## Structured output
+
+```java
+record Verdict(@Description("spam or ham") Label label, double confidence, List<String> reasons) {}
+
+StructuredResult<Verdict> result = agent.run(sessionId, "Classify:\n" + email,
+        StructuredOutput.of(Verdict.class)
+            .withValidator(v -> {
+                if (v.confidence() < 0 || v.confidence() > 1) throw new IllegalArgumentException("confidence must be 0..1");
+            }));
+Verdict verdict = result.value();
+String json = result.run().getFinalText();   // the same answer as JSON
+```
+
+- The agent gets a `submit_result` tool whose parameters are the answer's schema. A plain-text
+  reply is answered with a reminder to call it; both count toward the iteration limit.
+- Rejected answers come back to the model as a list of problems with JSON paths. Record
+  components are required unless they are `Optional`; unknown fields are rejected; numbers
+  and booleans sent as strings (`"42"`, `"true"`) and enum names in any case are accepted.
+- Validators signal problems with `IllegalArgumentException`; so do records' compact
+  constructors. Other exceptions are treated as bugs and end the run.
+- If no valid answer arrives within the iteration limit, `StructuredOutputException` is
+  thrown with the last problems; the session is saved first.
+- `StructuredOutput` also implements `TypedToolInput`, so a tool can use
+  `StructuredOutput.of(Args.class)` for its schema (`schemaJson()`) and argument checking.
+- Supported types: records, `String`, `char`, integer and decimal numbers (including
+  `BigInteger`/`BigDecimal`), `boolean`, enums, `List`, `Set`, arrays, `Map<String, V>`,
+  `Optional`, `LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `OffsetDateTime`, `UUID`,
+  `URI`. Records that contain themselves are not supported.

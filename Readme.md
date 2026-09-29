@@ -41,6 +41,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **📦 Release Readiness:** Public extension contracts, compatibility guidance, production examples, security policy, CI quality gates, dependency checks, and manual version/tag release automation are included.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
+- **🧾 Structured Output:** Get answers as Java records: the schema is generated from the record, and answers with missing fields, wrong types or failed checks are sent back to the model to fix.
 - **🔌 MCP Servers:** The optional `lambda-agent-mcp` module connects to any MCP server (stdio or Streamable HTTP) with the official MCP Java SDK; its tools get capabilities from the server's hints, so permissions and approvals apply.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP, and trace-export hooks are available without forcing integration dependencies into the core.
 - **📚 Agent Skills:** Load `SKILL.md` instruction folders; the agent sees short descriptions up front and loads full instructions and files only when a task needs them.
@@ -164,6 +165,32 @@ permission policy, approval handler, retries, context strategy and limits, and c
 be given tools the main agent has. They are stopped if the main agent runs out of time.
 Listen with `onSubagentStart`, `onSubagentEnd` (which includes the subagent's full
 transcript) and `onSubagentError`. See [`examples/multi-agent`](examples/multi-agent).
+
+## 🧾 Structured Output: Answers as Java Objects
+
+Describe the answer as a record and get an instance back instead of text:
+
+```java
+record Line(String item, int quantity, double unitPrice) {}
+
+@Description("An invoice found in an email")
+record Invoice(@Description("Company that must pay") String customer,
+               LocalDate invoiceDate, List<Line> lines, double total,
+               Optional<String> paymentTerms) {}          // Optional = not required
+
+Invoice invoice = agent.run("s1", "Extract the invoice:\n" + email,
+        StructuredOutput.of(Invoice.class)
+            .withValidator(i -> { if (i.total() < 0) throw new IllegalArgumentException("total must not be negative"); }))
+    .value();
+```
+
+The JSON Schema is generated from the record (strings, numbers, booleans, enums, lists,
+maps, nested records, `Optional`, dates, `UUID`). The model delivers its answer by calling a
+`submit_result` tool, so it can still use other tools first. If the answer has missing
+fields, wrong types, unknown fields, or fails a validator or the record's own constructor,
+every problem is sent back with its path (like `$.lines[1].quantity`) and the model tries
+again. `StructuredOutput.ofSchema(json)` takes a raw JSON Schema and returns a `Map`. See
+[`examples/structured-output`](examples/structured-output).
 
 ## 🔌 Using MCP Servers
 

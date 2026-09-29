@@ -112,17 +112,49 @@ public final class Agent {
     }
 
     public AgentResult run(String sessionId, String userInput, CancellationToken cancellationToken) {
+        return runWithTrace(sessionId, userInput, cancellationToken, null).result();
+    }
+
+    /**
+     * Runs the agent and returns its answer as a {@code T}. The model delivers the answer by
+     * calling a {@code submit_result} tool; invalid answers are sent back to it to fix.
+     *
+     * @throws StructuredOutputException if there is no valid answer within the iteration limit
+     */
+    public <T> StructuredResult<T> run(String sessionId, String userInput, StructuredOutput<T> output) {
+        return run(sessionId, userInput, output, new CancellationToken());
+    }
+
+    public <T> StructuredResult<T> run(String sessionId, String userInput, StructuredOutput<T> output,
+                                       CancellationToken cancellationToken) {
+        java.util.Objects.requireNonNull(output, "output must not be null");
+        if (toolRegistry.containsKey(StructuredOutput.TOOL_NAME)) {
+            throw new IllegalArgumentException("A tool is already named '" + StructuredOutput.TOOL_NAME
+                    + "', which structured output needs");
+        }
+        RunOutcome outcome = runWithTrace(sessionId, userInput, cancellationToken, output);
+        @SuppressWarnings("unchecked")
+        T value = (T) outcome.value();
+        return new StructuredResult<>(value, outcome.result());
+    }
+
+    private record RunOutcome(AgentResult result, Object value) {
+    }
+
+    private RunOutcome runWithTrace(String sessionId, String userInput, CancellationToken cancellationToken,
+                                    StructuredOutput<?> output) {
         String runId = UUID.randomUUID().toString();
         TraceContext.activate(runId);
         try {
-            return runInternal(sessionId, userInput, cancellationToken, runId);
+            return runInternal(sessionId, userInput, cancellationToken, runId, output);
         } finally {
             TraceContext.clear();
         }
     }
 
-    private AgentResult runInternal(String sessionId, String userInput,
-                                    CancellationToken cancellationToken, String runId) {
+    private RunOutcome runInternal(String sessionId, String userInput,
+                                   CancellationToken cancellationToken, String runId,
+                                   StructuredOutput<?> output) {
         Instant deadline = Instant.now().plus(config.getRunTimeout());
         for (AgentEventListener listener : listeners) listener.onRunStart(runId, sessionId);
 
@@ -145,6 +177,15 @@ public final class Agent {
                 null
         ));
 
+        // With structured output, the model also gets the submit_result tool.
+        List<ToolSchema> runTools = toolSchemas;
+        if (output != null) {
+            runTools = new ArrayList<>(toolSchemas);
+            AgentTool submit = output.tool();
+            runTools.add(new ToolSchema(submit.getName(), submit.getDescription(), submit.getJsonSchema()));
+        }
+        List<String> lastProblems = List.of();
+
         // Core agent loop: call model, possibly execute tools, repeat.
         for (int iteration  = 0; iteration  < config.getMaxIterations(); iteration++) {
             cancellationToken.throwIfCancelled();
@@ -157,7 +198,7 @@ public final class Agent {
             // Trim what the model sees (the session keeps the full history), then call it with streaming.
             List<Message> history = config.getContextStrategy().optimize(
                     session.getMessages(), config.getModelClient());
-            ChatResponse response = callModelWithRetry(history, cancellationToken, deadline);
+            ChatResponse response = callModelWithRetry(history, runTools, cancellationToken, deadline);
             for (AgentEventListener listener : listeners) listener.onModelResponse(response);
 
             // Add the assistant's response to the conversation.
@@ -178,15 +219,48 @@ public final class Agent {
 
             // Check if the model requested any tool calls.
             if (calls == null || calls.isEmpty()) {
+                if (output != null) {
+                    // A plain-text reply is not an answer here: ask for the tool call.
+                    session.getMessages().add(new Message(Role.USER, "Give your final answer by calling the "
+                            + StructuredOutput.TOOL_NAME + " tool with it as the arguments. A plain-text reply "
+                            + "is not accepted.", null));
+                    continue;
+                }
                 // No tools requested -> we're done
                 sessionStore.save(session);
                 AgentResult result = new AgentResult(assistant.getContent(), session, runId, iteration + 1);
                 for (AgentEventListener listener : listeners) listener.onRunEnd(result);
-                return result;
+                return new RunOutcome(result, null);
             }
 
             // Execute each requested tool and add TOOL messages.
+            Object accepted = null;
+            String acceptedJson = null;
             for (ToolCall call : calls) {
+                if (output != null && call.getName().equals(StructuredOutput.TOOL_NAME)) {
+                    if (acceptedJson != null) {
+                        session.getMessages().add(toolMessage(call, "Ignored: an answer was already accepted."));
+                        continue;
+                    }
+                    try {
+                        if (call.getArgumentsJson() != null
+                                && call.getArgumentsJson().length() > config.getMaxToolArgumentLength()) {
+                            throw new StructuredOutput.InvalidOutputException(List.of(
+                                    "$: the answer is longer than the limit of " + config.getMaxToolArgumentLength()
+                                            + " characters"));
+                        }
+                        accepted = output.parse(call.getArgumentsJson());
+                        acceptedJson = call.getArgumentsJson();
+                        session.getMessages().add(toolMessage(call, "Answer accepted."));
+                    } catch (StructuredOutput.InvalidOutputException invalid) {
+                        lastProblems = invalid.problems();
+                        session.getMessages().add(toolMessage(call, "The answer was rejected. Fix these problems "
+                                + "and call " + StructuredOutput.TOOL_NAME + " again:\n- "
+                                + String.join("\n- ", invalid.problems())));
+                    }
+                    continue;
+                }
+
                 AgentTool tool = toolRegistry.get(call.getName());
 
                 if (tool == null) {
@@ -279,6 +353,12 @@ public final class Agent {
                         Truncation.keepHeadAndTail(result.getContent(), policy.maxResultLength())));
             }
 
+            if (acceptedJson != null) {
+                sessionStore.save(session);
+                AgentResult result = new AgentResult(acceptedJson, session, runId, iteration + 1);
+                for (AgentEventListener listener : listeners) listener.onRunEnd(result);
+                return new RunOutcome(result, accepted);
+            }
         }
 
         // Safety stop: too many iterations.
@@ -288,7 +368,12 @@ public final class Agent {
                 session, runId, config.getMaxIterations()
         );
         for (AgentEventListener listener : listeners) listener.onRunEnd(result);
-        return result;
+        if (output != null) {
+            throw new StructuredOutputException("No valid answer after " + config.getMaxIterations() + " iterations"
+                    + (lastProblems.isEmpty() ? "; the model never called " + StructuredOutput.TOOL_NAME
+                            : "; last problems: " + String.join("; ", lastProblems)), result, lastProblems);
+        }
+        return new RunOutcome(result, null);
         } catch (RuntimeException | Error failure) {
             try {
                 sessionStore.save(session);
@@ -311,15 +396,15 @@ public final class Agent {
         for (AgentEventListener listener : listeners) listener.onToolAudit(event);
     }
 
-    private ChatResponse callModelWithRetry(List<Message> history, CancellationToken cancellationToken,
-                                            Instant deadline) {
+    private ChatResponse callModelWithRetry(List<Message> history, List<ToolSchema> tools,
+                                            CancellationToken cancellationToken, Instant deadline) {
         RetryPolicy policy = config.getModelRetryPolicy();
         for (int attempt = 1; attempt <= policy.maxAttempts(); attempt++) {
             cancellationToken.throwIfCancelled();
             try {
                 return config.getModelClient().streamChat(
                         history,
-                        toolSchemas,
+                        tools,
                         delta -> {
                             for (AgentEventListener listener : listeners) {
                                 listener.onAssistantDelta(delta);

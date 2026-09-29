@@ -22,6 +22,7 @@
         <module>skills-agent</module>
         <module>multi-agent</module>
         <module>mcp-agent</module>
+        <module>structured-output</module>
         <module>software-delivery-agent</module>
     </modules>
 

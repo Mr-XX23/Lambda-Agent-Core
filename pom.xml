@@ -23,6 +23,7 @@
         <module>examples/skills-agent</module>
         <module>examples/multi-agent</module>
         <module>examples/mcp-agent</module>
+        <module>examples/structured-output</module>
         <module>examples/software-delivery-agent</module>
     </modules>
 
