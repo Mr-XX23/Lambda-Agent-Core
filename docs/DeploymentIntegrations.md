@@ -30,7 +30,38 @@ need richer authentication, rate limiting, health checks, or metrics.
 
 ## MCP
 
-`McpToolAdapter` converts an MCP declaration and invocation callback into an `AgentTool`.
-`McpToolRegistry` provides duplicate-safe registration and lookup. Bind it to the MCP
-SDK transport used by the host application; the core module does not force a particular
-MCP implementation or protocol version.
+The optional `lambda-agent-mcp` module connects agents to MCP servers with the official
+MCP Java SDK (2.x). The core module stays free of MCP dependencies.
+
+```xml
+<dependency>
+    <groupId>ai.lambda</groupId>
+    <artifactId>lambda-agent-mcp</artifactId>
+    <version>${lambda.version}</version>
+</dependency>
+```
+
+```java
+try (McpServer github = McpServer.http("github", "https://example.com/mcp")
+        .header("Authorization", "Bearer " + token)
+        .requireApprovalForWrites(true)
+        .connect()) {
+    AgentConfig config = new AgentConfig(prompt, model, github.tools(), 10);
+}
+```
+
+- `McpServer.stdio(name, command, args...)` starts a local server process (stopped on
+  `close()`); `McpServer.http(name, url)` uses Streamable HTTP; `McpServer.transport(...)`
+  accepts any SDK transport.
+- Tools are named `<server>__<tool>`, using only letters, digits and underscores (at most
+  64 characters), so they are valid for every model provider. `prefixToolNames(false)`
+  turns the prefix off; `include(...)` exposes only chosen tools.
+- Tool hints map to capabilities: read-only tools get `READ`, others `WRITE`; open-world
+  tools add `NETWORK`; destructive tools add `SENSITIVE`. Missing hints use the MCP
+  defaults, so unannotated tools get `WRITE`, `NETWORK` and `SENSITIVE`. Hints are
+  declared by the server, so only trust them as far as you trust the server.
+- Results the server marks as errors are returned to the model as
+  `MCP tool error: ...` so it can recover, with `details.isError = true`.
+- Tools are loaded once at `connect()`; reconnect to pick up tool list changes.
+
+`McpToolAdapter` and `McpToolRegistry` remain available for binding tools by hand.

@@ -41,7 +41,8 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **📦 Release Readiness:** Public extension contracts, compatibility guidance, production examples, security policy, CI quality gates, dependency checks, and manual version/tag release automation are included.
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
-- **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
+- **🔌 MCP Servers:** The optional `lambda-agent-mcp` module connects to any MCP server (stdio or Streamable HTTP) with the official MCP Java SDK; its tools get capabilities from the server's hints, so permissions and approvals apply.
+- **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP, and trace-export hooks are available without forcing integration dependencies into the core.
 - **📚 Agent Skills:** Load `SKILL.md` instruction folders; the agent sees short descriptions up front and loads full instructions and files only when a task needs them.
 - **🤝 Subagents:** Break work into tasks that run in parallel in specialist subagents or self-clones, with clean contexts, inherited safety settings, and depth, parallelism and task limits.
 - **🛂 Tool Governance:** Typed input parsing, composable permission decisions, audit events, and bounded file, process, and network tools protect execution paths.
@@ -163,6 +164,28 @@ permission policy, approval handler, retries, context strategy and limits, and c
 be given tools the main agent has. They are stopped if the main agent runs out of time.
 Listen with `onSubagentStart`, `onSubagentEnd` (which includes the subagent's full
 transcript) and `onSubagentError`. See [`examples/multi-agent`](examples/multi-agent).
+
+## 🔌 Using MCP Servers
+
+Add the optional `lambda-agent-mcp` module to use the tools of any
+[Model Context Protocol](https://modelcontextprotocol.io) server:
+
+```java
+try (McpServer files = McpServer.stdio("files", "npx", "-y",
+            "@modelcontextprotocol/server-filesystem", "/path/to/folder")
+        .requireApprovalForWrites(true)      // reads run freely, changes need approval
+        .connect()) {
+    AgentConfig config = new AgentConfig(prompt, model, files.tools(), 10);
+    new Agent(config, sessionStore).run("session", "Summarize the files in the folder");
+}
+```
+
+Remote servers use `McpServer.http("github", "https://example.com/mcp").header(...)`.
+Each MCP tool becomes an `AgentTool` named `<server>__<tool>`, and the server's tool
+hints (read-only, destructive, open world) become capabilities, so permission policies,
+approvals, timeouts and result limits apply as for any other tool. See
+[`examples/mcp-agent`](examples/mcp-agent) and
+[Deployment Integrations](docs/DeploymentIntegrations.md#mcp).
 
 ## 🏗️ Use Cases
 * **Spring Boot Chatbots:** Embed Lambda AI inside a Spring REST Controller to serve an intelligent customer support bot.

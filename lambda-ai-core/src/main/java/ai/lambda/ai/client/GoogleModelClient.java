@@ -233,7 +233,10 @@ public final class GoogleModelClient implements ModelClient {
                 fn.put("name", ts.getName());
                 fn.put("description", ts.getDescription());
                 if (ts.getJsonSchema() != null && !ts.getJsonSchema().isBlank()) {
-                    fn.put("parameters", new JSONObject(ts.getJsonSchema()));
+                    // parametersJsonSchema takes standard JSON Schema. The older "parameters" field only
+                    // takes an OpenAPI subset and rejects keys such as additionalProperties, which
+                    // tools from MCP servers often use.
+                    fn.put("parametersJsonSchema", new JSONObject(ts.getJsonSchema()));
                 }
                 functionDecls.put(fn);
             }

@@ -34,6 +34,10 @@ digits, hyphens and underscores; `self` is reserved), `description`, optional `t
 optional `model`, followed by the subagent's instructions. The `invoke_subagent` tool name
 and its `tasks` / `agent` / `task` argument names are stable model-facing identifiers.
 
+MCP tools from `lambda-agent-mcp` are named `<server>__<tool>` with characters outside
+`[A-Za-z0-9_]` replaced by `_`; names longer than 64 characters are shortened with a hash
+suffix. Their capabilities are derived from the server's tool hints on every connect.
+
 `AgentEventListener` and `AgentTracer` are lifecycle boundaries. New callbacks are
 default methods where possible so existing implementations remain source-compatible.
 The subagent callbacks (`onSubagentStart`, `onSubagentEnd`, `onSubagentError`) may be

@@ -157,8 +157,12 @@ class GoogleModelClientTest {
         assertEquals("add_todo", firstResult.getString("name"));
         assertEquals("Added milk", firstResult.getJSONObject("response").getString("result"));
 
-        assertEquals("add_todo", body.getJSONArray("tools").getJSONObject(0)
-                .getJSONArray("functionDeclarations").getJSONObject(0).getString("name"));
+        JSONObject declaration = body.getJSONArray("tools").getJSONObject(0)
+                .getJSONArray("functionDeclarations").getJSONObject(0);
+        assertEquals("add_todo", declaration.getString("name"));
+        assertEquals("string", declaration.getJSONObject("parametersJsonSchema")
+                .getJSONObject("properties").getJSONObject("task").getString("type"));
+        assertFalse(declaration.has("parameters"), "only one of parameters / parametersJsonSchema may be sent");
     }
 
     @Test

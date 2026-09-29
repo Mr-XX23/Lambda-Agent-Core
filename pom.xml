@@ -12,6 +12,7 @@
     <modules>
         <module>lambda-ai-core</module>
         <module>lambda-agent-core</module>
+        <module>lambda-agent-mcp</module>
         <module>lambda-agent-spring-boot-starter</module>
         <module>examples/simple-chat-only</module>
         <module>examples/simple-chat-with-tools</module>
@@ -21,6 +22,7 @@
         <module>examples/simple-streaming-chat</module>
         <module>examples/skills-agent</module>
         <module>examples/multi-agent</module>
+        <module>examples/mcp-agent</module>
         <module>examples/software-delivery-agent</module>
     </modules>
 
@@ -31,6 +33,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <java.version>25</java.version>
         <junit.version>5.11.4</junit.version>
+        <mcp.version>2.0.1</mcp.version>
     </properties>
 
     <dependencyManagement>
@@ -50,6 +53,11 @@
             <dependency>
                 <groupId>ai.lambda</groupId>
                 <artifactId>lambda-agent-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ai.lambda</groupId>
+                <artifactId>lambda-agent-mcp</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

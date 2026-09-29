@@ -21,6 +21,7 @@
         <module>simple-history-truncation</module>
         <module>skills-agent</module>
         <module>multi-agent</module>
+        <module>mcp-agent</module>
         <module>software-delivery-agent</module>
     </modules>
 
