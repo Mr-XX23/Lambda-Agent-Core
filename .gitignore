@@ -36,3 +36,5 @@ buildNumber.properties
 # OS generated files
 .DS_Store
 Thumbs.db
+.jsonl
+.vscode
