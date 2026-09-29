@@ -43,6 +43,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
 - **📚 Agent Skills:** Load `SKILL.md` instruction folders; the agent sees short descriptions up front and loads full instructions and files only when a task needs them.
+- **🤝 Subagents:** Break work into tasks that run in parallel in specialist subagents or self-clones, with clean contexts, inherited safety settings, and depth, parallelism and task limits.
 - **🛂 Tool Governance:** Typed input parsing, composable permission decisions, audit events, and bounded file, process, and network tools protect execution paths.
 
 ## 💻 Quick Start
@@ -124,6 +125,44 @@ Only each skill's name and description go into the system prompt. The agent load
 the full instructions with `load_skill` when a task matches, and reads extra files
 with `read_skill_file`, which cannot leave the skill's folder. See
 [`examples/skills-agent`](examples/skills-agent).
+
+## 🤝 Subagents and Multi-Agent Work
+
+An agent can break a large task into parts and hand them to **subagents** that run in
+parallel. Each subagent starts with a clean slate (only the task it was given), and the
+main agent gets back every subagent's final answer.
+
+- **Specialists** have their own instructions, a subset of the main agent's tools, and
+  optionally their own model. Define them in code or in Markdown files.
+- **Self-cloning** lets the agent start copies of itself (`self`) for independent parts
+  of a big job. Copies can delegate further, up to a depth limit.
+
+```markdown
+<!-- agents/code-reviewer.md -->
+---
+name: code-reviewer
+description: Finds bugs in the Java files it is given. Give it exact file paths.
+tools: [read_file]
+model: pro            # optional: a key of the models map, or "inherit"
+---
+You are a careful senior Java reviewer. ...
+```
+
+```java
+Subagents subagents = Subagents.load(Path.of("agents"), Map.of("pro", proModel))
+        .withSelfCloning(true)     // allow copies of itself
+        .withMaxParallel(4)        // subagents running at once per call
+        .withMaxDepth(2);          // levels of self-clones below the main agent (max 10)
+
+AgentConfig config = new AgentConfig(prompt, model, tools, 10).withSubagents(subagents);
+```
+
+The model calls `invoke_subagent` with a list of `{agent, task}` items; they run in
+parallel and one failing does not stop the others. Subagents inherit the main agent's
+permission policy, approval handler, retries, context strategy and limits, and can only
+be given tools the main agent has. They are stopped if the main agent runs out of time.
+Listen with `onSubagentStart`, `onSubagentEnd` (which includes the subagent's full
+transcript) and `onSubagentError`. See [`examples/multi-agent`](examples/multi-agent).
 
 ## 🏗️ Use Cases
 * **Spring Boot Chatbots:** Embed Lambda AI inside a Spring REST Controller to serve an intelligent customer support bot.

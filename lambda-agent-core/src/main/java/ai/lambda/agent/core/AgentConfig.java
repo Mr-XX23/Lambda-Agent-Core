@@ -22,6 +22,7 @@ public final class AgentConfig {
     private final ToolApprovalHandler toolApprovalHandler;
     private final ToolPermissionPolicy toolPermissionPolicy;
     private final ContextStrategy contextStrategy;
+    private final Subagents subagents;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -39,7 +40,7 @@ public final class AgentConfig {
                        ToolErrorStrategy toolErrorStrategy, ContextStrategy contextStrategy) {
         this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, DEFAULT_RUN_TIMEOUT,
                 DEFAULT_MAX_TOOL_ARGUMENT_LENGTH, RetryPolicy.none(), (sessionId, call) -> false,
-                ToolPermissionPolicy.allowAll(), contextStrategy);
+                ToolPermissionPolicy.allowAll(), contextStrategy, null);
     }
 
     public AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
@@ -67,13 +68,14 @@ public final class AgentConfig {
                        RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
                        ToolPermissionPolicy toolPermissionPolicy) {
         this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
-                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, new NoOpStrategy());
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, new NoOpStrategy(), null);
     }
 
     private AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                         ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
                         RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
-                        ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy) {
+                        ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
+                        Subagents subagents) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -91,6 +93,7 @@ public final class AgentConfig {
         this.toolApprovalHandler = Objects.requireNonNull(toolApprovalHandler, "toolApprovalHandler must not be null");
         this.toolPermissionPolicy = Objects.requireNonNull(toolPermissionPolicy, "toolPermissionPolicy must not be null");
         this.contextStrategy = contextStrategy == null ? new NoOpStrategy() : contextStrategy;
+        this.subagents = subagents;
     }
 
     /**
@@ -100,7 +103,8 @@ public final class AgentConfig {
      */
     public AgentConfig withContextStrategy(ContextStrategy contextStrategy) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
-                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy);
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents);
     }
 
     /**
@@ -115,7 +119,29 @@ public final class AgentConfig {
         allTools.addAll(skills.tools());
         return new AgentConfig(systemPrompt + "\n\n" + skills.promptSection(), modelClient, allTools,
                 maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength, modelRetryPolicy,
-                toolApprovalHandler, toolPermissionPolicy, contextStrategy);
+                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents);
+    }
+
+    /**
+     * Returns a copy that can delegate work to {@code subagents} through an {@code invoke_subagent}
+     * tool. Subagents inherit this config's permission policy, approval handler, retry policy,
+     * context strategy, iteration limit and run timeout.
+     */
+    public AgentConfig withSubagents(Subagents subagents) {
+        Objects.requireNonNull(subagents, "subagents must not be null");
+        if (subagents.isEmpty()) {
+            throw new IllegalArgumentException("Subagents has no subagents and self-cloning is off");
+        }
+        return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents);
+    }
+
+    /** A copy for running a subagent: its own prompt, tools and model, everything else inherited. */
+    AgentConfig forSubagent(String systemPrompt, List<AgentTool> tools, ModelClient modelClient, Subagents subagents) {
+        return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents);
     }
 
     public String getSystemPrompt() {
@@ -164,5 +190,10 @@ public final class AgentConfig {
 
     public ContextStrategy getContextStrategy() {
         return contextStrategy;
+    }
+
+    /** The subagents this agent can delegate to, or null if it cannot delegate. */
+    public Subagents getSubagents() {
+        return subagents;
     }
 }

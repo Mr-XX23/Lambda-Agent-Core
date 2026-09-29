@@ -26,4 +26,16 @@ public interface AgentEventListener {
 
     // Fired when a new text chunk is received from the model (streaming)
     default void onAssistantDelta(String delta) {}
+
+    // Subagent events. Subagents run in parallel, so these may be called from several threads at once.
+    // depth is 1 for subagents of the main agent, 2 for their subagents, and so on.
+
+    // Fired when a subagent starts a delegated task
+    default void onSubagentStart(String subagent, String task, int depth) {}
+
+    // Fired when a subagent finishes; result.getSession() holds its full transcript
+    default void onSubagentEnd(String subagent, int depth, AgentResult result) {}
+
+    // Fired if a subagent's run fails; the other tasks of the same call keep running
+    default void onSubagentError(String subagent, int depth, Exception error) {}
 }

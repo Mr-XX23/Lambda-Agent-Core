@@ -68,3 +68,32 @@ are placed in the system prompt, so many skills cost little context until used. 
 skill tools declare `ToolCapability.READ`, so a `ToolPermissionPolicy` that denies reads
 also blocks skills. The system prompt is stored when a session starts, so existing
 sessions keep the skills they started with. Runnable example: `examples/skills-agent`.
+
+## Subagents
+
+```java
+Subagent reviewer = new Subagent("code-reviewer",
+        "Finds bugs in the Java files it is given. Give it exact file paths.",
+        "You are a careful senior Java reviewer. ...",
+        List.of("read_file"));                           // must also be one of the agent's tools
+
+AgentConfig config = new AgentConfig(prompt, model, List.of(new FileReadTool(workspace)), 10)
+    .withSubagents(Subagents.of(reviewer).withSelfCloning(true));
+```
+
+The agent gets an `invoke_subagent` tool taking `{"tasks": [{"agent": "...", "task": "..."}]}`.
+Tasks in one call run in parallel (`withMaxParallel`, default 4; `withMaxTasksPerCall`,
+default 8), each in a fresh subagent that sees only its task text. Results come back as
+one tool result, one section per task; a failed task is reported as `FAILED: <reason>`
+without stopping the others.
+
+- Specialist subagents get only their listed tools and cannot delegate further.
+- Self-clones (`self`) get the agent's instructions and tools, and can delegate again
+  until `withMaxDepth` (default 2, at most 10) is reached.
+- Subagent session ids start with the parent's session id (`<parent>:<agent>-<n>-<id>`),
+  so permission policies that look at session ids apply to subagents too.
+- Subagent events may arrive from several threads at once; listeners must be thread-safe.
+
+Definition files go in one folder: `<name>.md` or `<name>/agent.md`, with `name`,
+`description`, optional `tools` (a list) and optional `model` (a key of the map passed to
+`Subagents.load(dir, models)`, or `inherit`). Runnable example: `examples/multi-agent`.

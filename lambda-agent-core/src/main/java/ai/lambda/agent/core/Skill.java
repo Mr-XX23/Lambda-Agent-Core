@@ -4,9 +4,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -73,68 +70,11 @@ public record Skill(String name, String description, Path directory, String inst
     }
 
     static Skill parse(Path directory, String content) {
-        List<String> lines = content.lines().toList();
-        if (lines.isEmpty() || !lines.get(0).strip().equals("---")) {
-            throw new IllegalArgumentException("must start with '---' frontmatter containing name and description");
-        }
-        int end = 1;
-        while (end < lines.size() && !lines.get(end).strip().equals("---")) end++;
-        if (end == lines.size()) {
-            throw new IllegalArgumentException("frontmatter is missing its closing '---'");
-        }
-
-        Map<String, String> fields = parseFrontmatter(lines.subList(1, end));
-        String name = fields.get("name");
-        String description = fields.get("description");
+        Frontmatter frontmatter = Frontmatter.parse(content);
+        String name = frontmatter.get("name");
+        String description = frontmatter.get("description");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("frontmatter needs a 'name'");
         if (description == null) throw new IllegalArgumentException("frontmatter needs a 'description'");
-
-        String body = String.join("\n", lines.subList(end + 1, lines.size())).strip();
-        return new Skill(name.strip(), description.strip(), directory, body);
-    }
-
-    /**
-     * A small YAML subset, enough for skill frontmatter: {@code key: value} lines, quoted
-     * values, and values continued on indented lines (including {@code |} and {@code >} blocks).
-     */
-    private static Map<String, String> parseFrontmatter(List<String> lines) {
-        Map<String, String> fields = new HashMap<>();
-        String key = null;
-        boolean literal = false;
-        for (String line : lines) {
-            if (line.isBlank()) continue;
-            if (Character.isWhitespace(line.charAt(0)) && key != null) {
-                String previous = fields.get(key);
-                String joiner = previous.isEmpty() ? "" : literal ? "\n" : " ";
-                fields.put(key, previous + joiner + line.strip());
-                continue;
-            }
-            int colon = line.indexOf(':');
-            if (colon <= 0) {
-                throw new IllegalArgumentException("invalid frontmatter line: " + line.strip());
-            }
-            key = line.substring(0, colon).strip();
-            String value = line.substring(colon + 1).strip();
-            literal = value.startsWith("|");
-            if (value.equals("|") || value.equals("|-") || value.equals(">") || value.equals(">-")) {
-                value = "";
-            }
-            fields.put(key, unquote(value));
-        }
-        return fields;
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2) {
-            char first = value.charAt(0);
-            char last = value.charAt(value.length() - 1);
-            if (first == '"' && last == '"') {
-                return value.substring(1, value.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
-            }
-            if (first == '\'' && last == '\'') {
-                return value.substring(1, value.length() - 1).replace("''", "'");
-            }
-        }
-        return value;
+        return new Skill(name.strip(), description.strip(), directory, frontmatter.body());
     }
 }

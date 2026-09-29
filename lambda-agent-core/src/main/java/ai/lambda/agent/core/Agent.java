@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONObject;
@@ -24,14 +25,52 @@ public final class Agent {
     private final SessionStore sessionStore;
     private final Map<String, AgentTool> toolRegistry;
     private final List<ToolSchema> toolSchemas;
-    private final List<AgentEventListener> listeners = new ArrayList<>();
+    // Thread-safe: subagents running in parallel report their events here.
+    private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService toolExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final String systemPrompt;
 
     public Agent(AgentConfig config, SessionStore sessionStore) {
+        this(config, sessionStore, 0, config, null);
+    }
+
+    /**
+     * @param depth      0 for the main agent, 1 for its subagents, and so on
+     * @param rootConfig the main agent's config, which subagents are built from
+     * @param observers  listeners that receive subagent events (the main agent's), or null for this agent's own
+     */
+    Agent(AgentConfig config, SessionStore sessionStore, int depth, AgentConfig rootConfig,
+          List<AgentEventListener> observers) {
         this.config = config;
         this.sessionStore = sessionStore;
-        this.toolRegistry = buildToolRegistry(config.getTools());
-        this.toolSchemas = buildToolSchemas(config.getTools());
+
+        List<AgentTool> tools = new ArrayList<>(config.getTools());
+        String prompt = config.getSystemPrompt();
+        Subagents subagents = config.getSubagents();
+        if (subagents != null) {
+            if (depth == 0) checkSubagentTools(subagents, config.getTools());
+            if (depth < subagents.maxDepth()) {
+                tools.add(new InvokeSubagentTool(rootConfig, subagents, depth,
+                        observers != null ? observers : listeners));
+                prompt = prompt + "\n\n" + subagents.promptSection();
+            }
+        }
+        this.systemPrompt = prompt;
+        this.toolRegistry = buildToolRegistry(tools);
+        this.toolSchemas = buildToolSchemas(tools);
+    }
+
+    // A subagent can only be given tools the main agent has, so its permissions never exceed the main agent's.
+    private static void checkSubagentTools(Subagents subagents, List<AgentTool> tools) {
+        List<String> available = tools.stream().map(AgentTool::getName).toList();
+        for (Subagent subagent : subagents.all()) {
+            for (String tool : subagent.tools()) {
+                if (!available.contains(tool)) {
+                    throw new IllegalArgumentException("Subagent '" + subagent.name() + "' uses tool '" + tool
+                            + "', which the agent does not have. Add the tool to the agent's tools too.");
+                }
+            }
+        }
     }
 
     private static Map<String, AgentTool> buildToolRegistry(List<AgentTool> tools) {
@@ -94,7 +133,7 @@ public final class Agent {
         if (session.getMessages().isEmpty()) {
             session.getMessages().add(new Message(
                     Role.SYSTEM,
-                    config.getSystemPrompt(),
+                    systemPrompt,
                     null
             ));
         }

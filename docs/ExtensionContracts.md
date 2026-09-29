@@ -29,8 +29,15 @@ letters, digits and hyphens, at most 64 characters) and `description` (at most 1
 characters), followed by Markdown instructions. The `load_skill` and
 `read_skill_file` tool names are stable model-facing identifiers.
 
+Subagent definition files use the same frontmatter style: `name` (lowercase letters,
+digits, hyphens and underscores; `self` is reserved), `description`, optional `tools` and
+optional `model`, followed by the subagent's instructions. The `invoke_subagent` tool name
+and its `tasks` / `agent` / `task` argument names are stable model-facing identifiers.
+
 `AgentEventListener` and `AgentTracer` are lifecycle boundaries. New callbacks are
 default methods where possible so existing implementations remain source-compatible.
+The subagent callbacks (`onSubagentStart`, `onSubagentEnd`, `onSubagentError`) may be
+invoked concurrently from several threads.
 
 ## Compatibility policy
 

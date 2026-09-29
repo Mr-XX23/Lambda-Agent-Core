@@ -20,6 +20,7 @@
         <module>simple-streaming-chat</module>
         <module>simple-history-truncation</module>
         <module>skills-agent</module>
+        <module>multi-agent</module>
         <module>software-delivery-agent</module>
     </modules>
 
