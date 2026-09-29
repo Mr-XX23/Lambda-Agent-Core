@@ -20,6 +20,8 @@ import com.anthropic.core.ObjectMappers;
 import com.anthropic.core.http.StreamResponse;
 import com.anthropic.helpers.BetaMessageAccumulator;
 import com.anthropic.models.beta.messages.BetaBase64ImageSource;
+import com.anthropic.models.beta.messages.BetaCacheControlEphemeral;
+import com.anthropic.models.beta.messages.BetaTextBlockParam;
 import com.anthropic.models.beta.messages.BetaContentBlock;
 import com.anthropic.models.beta.messages.BetaContentBlockParam;
 import com.anthropic.models.beta.messages.BetaImageBlockParam;
@@ -86,6 +88,7 @@ public final class AnthropicModelClient implements ModelClient {
     private final String effort;
     private final boolean refusalFallbacks;
     private final boolean dropMismatchedThinking;
+    private final boolean promptCaching;
     private final ModelCapabilities capabilities;
 
     /** {@value #DEFAULT_MODEL} with this API key. */
@@ -99,12 +102,12 @@ public final class AnthropicModelClient implements ModelClient {
 
     /** Uses an SDK client you configured (credentials, base URL, timeouts, retries). */
     public AnthropicModelClient(AnthropicClient client, String model) {
-        this(client, model, 64_000, null, FALLBACK_MODELS.contains(model), supportsAdaptiveThinking(model),
+        this(client, model, 64_000, null, FALLBACK_MODELS.contains(model), supportsAdaptiveThinking(model), true,
                 ModelCapabilities.of(Modality.IMAGE, Modality.DOCUMENT).withMediaUrls(Modality.IMAGE, Modality.DOCUMENT));
     }
 
     private AnthropicModelClient(AnthropicClient client, String model, long maxTokens, String effort, boolean refusalFallbacks,
-                                 boolean dropMismatchedThinking, ModelCapabilities capabilities) {
+                                 boolean dropMismatchedThinking, boolean promptCaching, ModelCapabilities capabilities) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
         if (maxTokens < 1) throw new IllegalArgumentException("maxTokens must be at least 1");
@@ -112,6 +115,7 @@ public final class AnthropicModelClient implements ModelClient {
         this.effort = effort;
         this.refusalFallbacks = refusalFallbacks;
         this.dropMismatchedThinking = dropMismatchedThinking;
+        this.promptCaching = promptCaching;
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities must not be null");
     }
 
@@ -129,7 +133,7 @@ public final class AnthropicModelClient implements ModelClient {
 
     /** The most tokens one reply may use (default 64,000; requests stream, so large values are fine). */
     public AnthropicModelClient withMaxTokens(long maxTokens) {
-        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, capabilities);
+        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, promptCaching, capabilities);
     }
 
     /**
@@ -137,12 +141,12 @@ public final class AnthropicModelClient implements ModelClient {
      * {@code max}. Unset, the model's default applies ({@code medium} on Claude Opus 5.5).
      */
     public AnthropicModelClient withEffort(String effort) {
-        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, capabilities);
+        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, promptCaching, capabilities);
     }
 
     /** Whether a refused request is retried on a fallback model chosen by the API (on by default where supported). */
     public AnthropicModelClient withRefusalFallbacks(boolean enabled) {
-        return new AnthropicModelClient(client, model, maxTokens, effort, enabled, dropMismatchedThinking, capabilities);
+        return new AnthropicModelClient(client, model, maxTokens, effort, enabled, dropMismatchedThinking, promptCaching, capabilities);
     }
 
     /**
@@ -151,11 +155,21 @@ public final class AnthropicModelClient implements ModelClient {
      * the request fail ({@code false}, useful in tests to catch history edits).
      */
     public AnthropicModelClient withMismatchedThinkingDropped(boolean drop) {
-        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, drop, capabilities);
+        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, drop, promptCaching, capabilities);
+    }
+
+    /**
+     * Whether to use prompt caching (on by default): the system prompt gets a cache breakpoint and
+     * the growing conversation is cached automatically, so each agent step re-reads the unchanged
+     * history from cache instead of processing it again, which is faster and cheaper. Turn it off
+     * on platforms that reject automatic caching.
+     */
+    public AnthropicModelClient withPromptCaching(boolean enabled) {
+        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, enabled, capabilities);
     }
 
     public AnthropicModelClient withCapabilities(ModelCapabilities capabilities) {
-        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, capabilities);
+        return new AnthropicModelClient(client, model, maxTokens, effort, refusalFallbacks, dropMismatchedThinking, promptCaching, capabilities);
     }
 
     @Override
@@ -206,7 +220,17 @@ public final class AnthropicModelClient implements ModelClient {
                 .model(model)
                 .maxTokens(maxTokens)
                 .messages(converted.messages());
-        if (converted.system() != null) params.system(converted.system());
+        if (converted.system() != null) {
+            if (promptCaching) {
+                // An explicit breakpoint after the fixed system prompt: always a cache read point.
+                params.systemOfBetaTextBlockParams(List.of(BetaTextBlockParam.builder()
+                        .text(converted.system()).cacheControl(BetaCacheControlEphemeral.builder().build()).build()));
+            } else {
+                params.system(converted.system());
+            }
+        }
+        // Automatic caching moves a breakpoint to the end of the conversation as it grows.
+        if (promptCaching) params.cacheControl(BetaCacheControlEphemeral.builder().build());
         if (tools != null) for (ToolSchema tool : tools) params.addTool(tool(tool));
         if (dropMismatchedThinking) {
             params.addBeta(THINKING_BINDING_BETA);

@@ -270,10 +270,12 @@ public final class Agent {
             // Execute each requested tool and add TOOL messages.
             Object accepted = null;
             String acceptedJson = null;
+            List<Object> slots = new ArrayList<>(); // a TOOL Message, or a PendingTool still running
+            try {
             for (ToolCall call : calls) {
                 if (output != null && call.getName().equals(StructuredOutput.TOOL_NAME)) {
                     if (acceptedJson != null) {
-                        session.getMessages().add(toolMessage(call, "Ignored: an answer was already accepted."));
+                        slots.add(toolMessage(call, "Ignored: an answer was already accepted."));
                         continue;
                     }
                     try {
@@ -285,10 +287,10 @@ public final class Agent {
                         }
                         accepted = output.parse(call.getArgumentsJson());
                         acceptedJson = call.getArgumentsJson();
-                        session.getMessages().add(toolMessage(call, "Answer accepted."));
+                        slots.add(toolMessage(call, "Answer accepted."));
                     } catch (StructuredOutput.InvalidOutputException invalid) {
                         lastProblems = invalid.problems();
-                        session.getMessages().add(toolMessage(call, "The answer was rejected. Fix these problems "
+                        slots.add(toolMessage(call, "The answer was rejected. Fix these problems "
                                 + "and call " + StructuredOutput.TOOL_NAME + " again:\n- "
                                 + String.join("\n- ", invalid.problems())));
                     }
@@ -299,7 +301,7 @@ public final class Agent {
 
                 if (tool == null) {
                     // Unknown tool: provide an error message back to the model so it can see it in the next turn.
-                    session.getMessages().add(toolMessage(call, "Tool '" + call.getName() + "' is not available."));
+                    slots.add(toolMessage(call, "Tool '" + call.getName() + "' is not available."));
                     continue;
                 }
                 ToolPolicy policy = tool.getPolicy();
@@ -307,7 +309,7 @@ public final class Agent {
                         .evaluate(sessionId, tool, tool.getCapabilities());
                 if (!permission.allowed()) {
                     audit(sessionId, call, tool, "DENIED", permission.reason());
-                    session.getMessages().add(toolMessage(call,
+                    slots.add(toolMessage(call,
                             "Tool '" + call.getName() + "' was denied: " + permission.reason()));
                     continue;
                 }
@@ -315,7 +317,7 @@ public final class Agent {
                 if (policy.requiresApproval()
                         && !config.getToolApprovalHandler().approve(sessionId, call)) {
                     audit(sessionId, call, tool, "DENIED", "human approval was not granted");
-                    session.getMessages().add(toolMessage(call, "Tool '" + call.getName() + "' was not approved."));
+                    slots.add(toolMessage(call, "Tool '" + call.getName() + "' was not approved."));
                     continue;
                 }
 
@@ -337,7 +339,7 @@ public final class Agent {
                 } catch (Exception validationError) {
                     audit(sessionId, call, tool, "DENIED", "typed input rejected: "
                             + validationError.getMessage());
-                    session.getMessages().add(toolMessage(call,
+                    slots.add(toolMessage(call,
                             "Tool '" + call.getName() + "' arguments were rejected: "
                                     + validationError.getMessage()));
                     continue;
@@ -345,46 +347,24 @@ public final class Agent {
 
                 for (AgentEventListener l : listeners) l.onToolStart(call, ctx);
 
-                // Execute the tool and get the result.
-                ToolResult result;
+                // Start the tool. With parallel tool calls, the next tool starts right away;
+                // otherwise this one finishes first. Results are added in the calls' order either way.
+                PendingTool pending = new PendingTool(call, policy, toolExecutor.submit(() -> tool.execute(ctx)),
+                        System.nanoTime() + policy.timeout().toNanos());
+                slots.add(config.isParallelToolCalls() ? pending : finish(pending));
+            }
 
-                try {
-
-                    // Execute the tool and get the result.
-                    {
-                        java.util.concurrent.Future<ToolResult> future = toolExecutor.submit(() -> tool.execute(ctx));
-                        try {
-                            result = future.get(policy.timeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
-                        } catch (java.util.concurrent.TimeoutException timeout) {
-                            future.cancel(true);
-                            throw new RuntimeException("Tool '" + call.getName() + "' timed out", timeout);
-                        } finally {
-                            future.cancel(false);
-                        }
-                    }
-
-                    for (AgentEventListener l : listeners) l.onToolEnd(call, result);
-
-                } catch (Exception e) {
-
-                    for (AgentEventListener l : listeners) l.onToolError(call, e);
-
-                    // Check the configured tool error strategy.
-                    if (config.getToolErrorStrategy() == ToolErrorStrategy.THROW) {
-                        throw new RuntimeException("Tool '" + call.getName() + "' failed", e);
-                    }
-
-                    // SEND_TO_MODEL: send a textual error back to the model so it can see it in the next turn.
-                    String errorContent = "[lambda-agent-core] Tool '" + call.getName() + "' failed: " + e.getMessage();
-                    session.getMessages().add(toolMessage(call,
-                            Truncation.keepHeadAndTail(errorContent, policy.maxResultLength())));
-                    continue;
+            // Collect results in the order the model asked for them.
+            for (int i = 0; i < slots.size(); i++) {
+                Object slot = slots.get(i);
+                session.getMessages().add(slot instanceof PendingTool running ? finish(running) : (Message) slot);
+            }
+            } catch (RuntimeException | Error failure) {
+                // Stop tools still running in parallel before giving up on this step.
+                for (Object slot : slots) {
+                    if (slot instanceof PendingTool running) running.future().cancel(true);
                 }
-
-                // Add the tool result so the model can see it in the next turn. Oversized results keep
-                // their start and end; listeners above already received the full text.
-                session.getMessages().add(toolMessage(call,
-                        Truncation.keepHeadAndTail(result.getContent(), policy.maxResultLength())));
+                throw failure;
             }
 
             if (acceptedJson != null) {
@@ -416,6 +396,42 @@ public final class Agent {
             }
             throw failure;
         }
+    }
+
+    private record PendingTool(ToolCall call, ToolPolicy policy,
+                               java.util.concurrent.Future<ToolResult> future, long deadlineNanos) {
+    }
+
+    /** Waits for a started tool (within its timeout) and returns its TOOL message. */
+    private Message finish(PendingTool pending) {
+        ToolCall call = pending.call();
+        ToolResult result;
+        try {
+            long remaining = Math.max(0, pending.deadlineNanos() - System.nanoTime());
+            try {
+                result = pending.future().get(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
+            } catch (java.util.concurrent.TimeoutException timeout) {
+                pending.future().cancel(true);
+                throw new RuntimeException("Tool '" + call.getName() + "' timed out", timeout);
+            } finally {
+                pending.future().cancel(false);
+            }
+            for (AgentEventListener l : listeners) l.onToolEnd(call, result);
+        } catch (Exception e) {
+            for (AgentEventListener l : listeners) l.onToolError(call, e);
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+
+            // Check the configured tool error strategy.
+            if (config.getToolErrorStrategy() == ToolErrorStrategy.THROW) {
+                throw new RuntimeException("Tool '" + call.getName() + "' failed", e);
+            }
+
+            // SEND_TO_MODEL: send a textual error back to the model so it can see it in the next turn.
+            String errorContent = "[lambda-agent-core] Tool '" + call.getName() + "' failed: " + e.getMessage();
+            return toolMessage(call, Truncation.keepHeadAndTail(errorContent, pending.policy().maxResultLength()));
+        }
+        // Oversized results keep their start and end; listeners above already received the full text.
+        return toolMessage(call, Truncation.keepHeadAndTail(result.getContent(), pending.policy().maxResultLength()));
     }
 
     // Every TOOL message carries the call's id and tool name: providers match results to calls

@@ -174,6 +174,39 @@ class OpenAICompatibleClientTest {
     }
 
     @Test
+    void separateClientsReuseOneWarmConnection() throws Exception {
+        try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
+            var provider = OpenAICompatibleProvider.OPENAI.withBaseUrl(server.url() + "/v1");
+            var first = new OpenAIModelClient(provider, "k", "gpt-5", FAST);
+            var second = new OpenAIModelClient(provider, "k", "gpt-5-mini", FAST).withCapabilities(ModelCapabilities.textOnly());
+
+            first.chat(List.of(new Message(Role.USER, "one", null)), List.of());
+            second.chat(List.of(new Message(Role.USER, "two", null)), List.of());
+            first.chat(List.of(new Message(Role.USER, "three", null)), List.of());
+
+            List<Integer> ports = server.requests.stream().map(LocalServer.Request::clientPort).distinct().toList();
+            assertEquals(1, ports.size(), "all three requests used the same TCP connection: " + ports);
+        }
+    }
+
+    @Test
+    void clientsWithTheSameSettingsShareOnePool() {
+        HttpOptions a = new HttpOptions(Duration.ofSeconds(7), Duration.ofSeconds(30), 2, Duration.ofMillis(5));
+        HttpOptions b = new HttpOptions(Duration.ofSeconds(7), Duration.ofSeconds(90), 5, Duration.ofSeconds(1));
+
+        assertSame(HttpRetry.newClient(a), HttpRetry.newClient(b), "only the connect timeout affects the pool");
+        assertNotSame(HttpRetry.newClient(a), HttpRetry.newClient(FAST));
+    }
+
+    @Test
+    void mediaIsEncodedOnceNoMatterHowOftenItIsSent() {
+        Media photo = Media.of(new byte[1024 * 1024], "image/png");
+
+        assertSame(photo.base64(), photo.base64());
+        assertTrue(photo.dataUrl().endsWith(photo.base64()));
+    }
+
+    @Test
     void keyIsRequiredWhereTheProviderNeedsOne() {
         assertThrows(IllegalArgumentException.class,
                 () -> new OpenAIModelClient(OpenAICompatibleProvider.OPENAI, "", "gpt-5", FAST));

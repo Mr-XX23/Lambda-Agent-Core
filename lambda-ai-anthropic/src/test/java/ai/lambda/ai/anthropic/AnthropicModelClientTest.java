@@ -101,7 +101,7 @@ class AnthropicModelClientTest {
         assertTrue(request.header("Anthropic-beta").contains(AnthropicModelClient.FALLBACK_BETA));
         JSONObject body = request.json();
         assertEquals("claude-opus-5-5", body.getString("model"));
-        assertEquals("Be brief.", body.getString("system"));
+        assertEquals("Be brief.", body.getJSONArray("system").getJSONObject(0).getString("text"));
         assertEquals("drop_block", body.getJSONObject("thinking").getJSONObject("block_binding").getString("prefix_mismatch_behavior"));
         assertEquals("default", body.getString("fallbacks"));
 
@@ -246,6 +246,26 @@ class AnthropicModelClientTest {
         assertFalse(body.has("fallbacks"));
         assertFalse(body.has("thinking"));
         assertEquals("high", body.getJSONObject("output_config").getString("effort"));
+    }
+
+    @Test
+    void promptCachingMarksTheSystemPromptAndTheConversation() {
+        reply = r -> TOOL_REPLY;
+        List<Message> history = List.of(new Message(Role.SYSTEM, "You are a careful assistant.", null),
+                new Message(Role.USER, "hi", null));
+
+        client("claude-opus-5-5").chat(history, List.of());
+        client("claude-opus-5-5").withPromptCaching(false).chat(history, List.of());
+
+        JSONObject cached = requests.get(0).json();
+        assertEquals("ephemeral", cached.getJSONObject("cache_control").getString("type"), "automatic caching of the conversation");
+        JSONObject system = cached.getJSONArray("system").getJSONObject(0);
+        assertEquals("You are a careful assistant.", system.getString("text"));
+        assertEquals("ephemeral", system.getJSONObject("cache_control").getString("type"), "breakpoint after the system prompt");
+
+        JSONObject plain = requests.get(1).json();
+        assertFalse(plain.has("cache_control"));
+        assertEquals("You are a careful assistant.", plain.getString("system"));
     }
 
     @Test

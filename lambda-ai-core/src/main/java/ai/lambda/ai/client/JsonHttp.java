@@ -35,10 +35,7 @@ final class JsonHttp {
         this.options = Objects.requireNonNull(options);
         this.headers = Map.copyOf(headers);
         // Downloads (for example generated videos) may redirect to a storage host.
-        this.client = HttpClient.newBuilder()
-                .connectTimeout(options.connectTimeout())
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+        this.client = SharedHttpClients.get(options.connectTimeout(), true);
     }
 
     static Map<String, String> bearer(String apiKey) {

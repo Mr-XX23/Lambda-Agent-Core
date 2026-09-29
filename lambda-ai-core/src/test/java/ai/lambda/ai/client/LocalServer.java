@@ -17,7 +17,7 @@ import java.util.function.Function;
 /** A local HTTP server standing in for a provider API in tests. It records every request. */
 final class LocalServer implements AutoCloseable {
 
-    record Request(String method, String path, Map<String, List<String>> headers, byte[] body) {
+    record Request(String method, String path, Map<String, List<String>> headers, byte[] body, int clientPort) {
         String text() {
             return new String(body, StandardCharsets.UTF_8);
         }
@@ -61,7 +61,8 @@ final class LocalServer implements AutoCloseable {
 
     private void handle(HttpExchange exchange, Function<Request, Reply> handler) throws IOException {
         Request request = new Request(exchange.getRequestMethod(), exchange.getRequestURI().toString(),
-                Map.copyOf(exchange.getRequestHeaders()), exchange.getRequestBody().readAllBytes());
+                Map.copyOf(exchange.getRequestHeaders()), exchange.getRequestBody().readAllBytes(),
+                exchange.getRemoteAddress().getPort());
         requests.add(request);
         Reply reply = handler.apply(request);
         exchange.getResponseHeaders().add("Content-Type", reply.contentType());

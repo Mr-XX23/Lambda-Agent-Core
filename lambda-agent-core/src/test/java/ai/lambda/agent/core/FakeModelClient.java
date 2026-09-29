@@ -15,6 +15,7 @@ import java.util.function.Consumer;
 final class FakeModelClient implements ModelClient {
 
     final List<List<Message>> requests = new ArrayList<>();
+    final java.util.concurrent.atomic.AtomicInteger tokenCountCalls = new java.util.concurrent.atomic.AtomicInteger();
     private final Deque<ChatResponse> script = new ArrayDeque<>();
 
     FakeModelClient reply(ChatResponse response) {
@@ -48,6 +49,7 @@ final class FakeModelClient implements ModelClient {
 
     @Override
     public int countTokens(List<Message> messages) {
+        tokenCountCalls.incrementAndGet();
         return messages.stream().mapToInt(m -> m.getContent().length()).sum();
     }
 }

@@ -54,6 +54,8 @@ public final class Media {
     private final byte[] data;
     private final String url;
     private final String name;
+    // Encoded once: the same media is sent again on every model call of a run.
+    private volatile String base64;
 
     private Media(String mimeType, byte[] data, String url, String name) {
         this.mimeType = Objects.requireNonNull(mimeType, "mimeType must not be null").toLowerCase(Locale.ROOT);
@@ -142,7 +144,10 @@ public final class Media {
 
     /** The bytes as base64, or null for URL media. */
     public String base64() {
-        return data == null ? null : Base64.getEncoder().encodeToString(data);
+        if (data == null) return null;
+        String encoded = base64;
+        if (encoded == null) base64 = encoded = Base64.getEncoder().encodeToString(data);
+        return encoded;
     }
 
     /** A {@code data:} URL holding the bytes, or the plain URL for URL media. */

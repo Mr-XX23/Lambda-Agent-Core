@@ -18,10 +18,9 @@ final class HttpRetry {
     private HttpRetry() {
     }
 
+    /** The shared, connection-reusing client for these options (see {@link SharedHttpClients}). */
     static HttpClient newClient(HttpOptions options) {
-        return HttpClient.newBuilder()
-                .connectTimeout(options.connectTimeout())
-                .build();
+        return SharedHttpClients.get(options.connectTimeout(), false);
     }
 
     /**

@@ -23,6 +23,7 @@ public final class AgentConfig {
     private final ToolPermissionPolicy toolPermissionPolicy;
     private final ContextStrategy contextStrategy;
     private final Subagents subagents;
+    private final boolean parallelToolCalls;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -76,6 +77,15 @@ public final class AgentConfig {
                         RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
                         ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
                         Subagents subagents) {
+        this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength,
+                modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, false);
+    }
+
+    private AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
+                        ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
+                        RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
+                        ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
+                        Subagents subagents, boolean parallelToolCalls) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -94,6 +104,7 @@ public final class AgentConfig {
         this.toolPermissionPolicy = Objects.requireNonNull(toolPermissionPolicy, "toolPermissionPolicy must not be null");
         this.contextStrategy = contextStrategy == null ? new NoOpStrategy() : contextStrategy;
         this.subagents = subagents;
+        this.parallelToolCalls = parallelToolCalls;
     }
 
     /**
@@ -104,7 +115,7 @@ public final class AgentConfig {
     public AgentConfig withContextStrategy(ContextStrategy contextStrategy) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents);
+                subagents, parallelToolCalls);
     }
 
     /**
@@ -119,7 +130,7 @@ public final class AgentConfig {
         allTools.addAll(skills.tools());
         return new AgentConfig(systemPrompt + "\n\n" + skills.promptSection(), modelClient, allTools,
                 maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength, modelRetryPolicy,
-                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents);
+                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, parallelToolCalls);
     }
 
     /**
@@ -134,14 +145,31 @@ public final class AgentConfig {
         }
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents);
+                subagents, parallelToolCalls);
     }
 
     /** A copy for running a subagent: its own prompt, tools and model, everything else inherited. */
     AgentConfig forSubagent(String systemPrompt, List<AgentTool> tools, ModelClient modelClient, Subagents subagents) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents);
+                subagents, parallelToolCalls);
+    }
+
+    /**
+     * Returns a copy that runs the tools of one model reply at the same time when the model asks
+     * for several at once, instead of one after another. Permission checks and approvals still
+     * happen in order, and results are added in the order the model asked for them. Only enable
+     * this if your tools are safe to run concurrently (for example, they do not change the same
+     * session data).
+     */
+    public AgentConfig withParallelToolCalls(boolean parallel) {
+        return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents, parallel);
+    }
+
+    public boolean isParallelToolCalls() {
+        return parallelToolCalls;
     }
 
     public String getSystemPrompt() {
