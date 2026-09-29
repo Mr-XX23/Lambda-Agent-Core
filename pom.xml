@@ -19,6 +19,7 @@
         <module>examples/todo-agent</module>
         <module>examples/simple-history-truncation</module>
         <module>examples/simple-streaming-chat</module>
+        <module>examples/skills-agent</module>
         <module>examples/software-delivery-agent</module>
     </modules>
 

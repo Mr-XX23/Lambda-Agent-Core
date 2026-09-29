@@ -15,6 +15,20 @@ argument validation. Authorization is evaluated before validation and execution.
 execution IDs and versions and must reject stale expected-version writes with
 `OptimisticLockException`.
 
+`ModelClient.countTokens` has a default estimate of about four characters per token;
+clients whose provider offers a token-counting API should override it, since
+`TokenLimitStrategy` relies on it.
+
+`ContextStrategy` is the history-trimming boundary. `optimize` returns the messages
+sent to the model and must not modify the session. Results must keep each tool call
+together with its results and start (after the system prompt) with a user message;
+`SlidingWindowStrategy` and `TokenLimitStrategy` guarantee this.
+
+`SKILL.md` is the skill format boundary: YAML frontmatter with `name` (lowercase
+letters, digits and hyphens, at most 64 characters) and `description` (at most 1024
+characters), followed by Markdown instructions. The `load_skill` and
+`read_skill_file` tool names are stable model-facing identifiers.
+
 `AgentEventListener` and `AgentTracer` are lifecycle boundaries. New callbacks are
 default methods where possible so existing implementations remain source-compatible.
 

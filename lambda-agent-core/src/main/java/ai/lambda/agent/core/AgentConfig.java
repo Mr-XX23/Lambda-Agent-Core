@@ -103,6 +103,21 @@ public final class AgentConfig {
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy);
     }
 
+    /**
+     * Returns a copy that can use {@code skills}: their names and descriptions are appended to
+     * the system prompt, and the {@code load_skill} and {@code read_skill_file} tools are added.
+     * Sessions that already exist keep the system prompt they started with.
+     */
+    public AgentConfig withSkills(Skills skills) {
+        Objects.requireNonNull(skills, "skills must not be null");
+        if (skills.isEmpty()) return this;
+        List<AgentTool> allTools = new java.util.ArrayList<>(tools);
+        allTools.addAll(skills.tools());
+        return new AgentConfig(systemPrompt + "\n\n" + skills.promptSection(), modelClient, allTools,
+                maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength, modelRetryPolicy,
+                toolApprovalHandler, toolPermissionPolicy, contextStrategy);
+    }
+
     public String getSystemPrompt() {
         return systemPrompt;
     }

@@ -51,3 +51,20 @@ Use `RedisCheckpointStore` with an application-provided atomic Redis client for
 distributed workers, or `JdbcCheckpointStore` with a pooled `DataSource`. Expose an
 agent through `AgentHttpServer` with a bearer token and request limits, or add the
 Spring Boot starter and provide an `Agent` bean.
+
+## Skills
+
+```java
+Skills skills = Skills.load(Path.of("skills"));        // one skill per subfolder with SKILL.md
+AgentConfig config = new AgentConfig(prompt, model, tools, 8)
+    .withSkills(skills)                                 // adds load_skill and read_skill_file
+    .withContextStrategy(new SlidingWindowStrategy(40));
+```
+
+Each `SKILL.md` starts with frontmatter holding `name` (lowercase letters, digits,
+hyphens; at most 64 characters) and `description` (what the skill does and when to use
+it; at most 1024 characters), followed by the instructions. Only names and descriptions
+are placed in the system prompt, so many skills cost little context until used. Both
+skill tools declare `ToolCapability.READ`, so a `ToolPermissionPolicy` that denies reads
+also blocks skills. The system prompt is stored when a session starts, so existing
+sessions keep the skills they started with. Runnable example: `examples/skills-agent`.

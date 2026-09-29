@@ -42,6 +42,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **📡 Provider Streaming:** OpenAI and Gemini adapters expose incremental text and normalized tool-call responses.
 - **🔐 Argument and File Safety:** Tools can validate arguments, cap result size, and restrict file reads to a configured root.
 - **🌐 Integration Boundaries:** Optional JDK HTTP serving, MCP tool adaptation, and trace-export hooks are available without forcing integration dependencies into the core.
+- **📚 Agent Skills:** Load `SKILL.md` instruction folders; the agent sees short descriptions up front and loads full instructions and files only when a task needs them.
 - **🛂 Tool Governance:** Typed input parsing, composable permission decisions, audit events, and bounded file, process, and network tools protect execution paths.
 
 ## 💻 Quick Start
@@ -92,6 +93,37 @@ public class WeatherTool implements AgentTool {
     }
 }
 ```
+
+## 📚 Teaching the Agent with Skills
+
+A skill is a folder of instructions for one kind of task, in the same `SKILL.md`
+format used by Claude and the Antigravity SDK. No Java code is needed:
+
+```
+skills/
+└── release-notes/
+    ├── SKILL.md        ← name, description, and step-by-step instructions
+    └── template.md     ← optional extra files the instructions refer to
+```
+
+```markdown
+---
+name: release-notes
+description: Turns merged changes into release notes. Use when asked for a changelog.
+---
+1. Read `template.md` with `read_skill_file` and follow its layout.
+2. ...
+```
+
+```java
+Skills skills = Skills.load(Path.of("skills"));
+AgentConfig config = new AgentConfig(prompt, model, tools, 8).withSkills(skills);
+```
+
+Only each skill's name and description go into the system prompt. The agent loads
+the full instructions with `load_skill` when a task matches, and reads extra files
+with `read_skill_file`, which cannot leave the skill's folder. See
+[`examples/skills-agent`](examples/skills-agent).
 
 ## 🏗️ Use Cases
 * **Spring Boot Chatbots:** Embed Lambda AI inside a Spring REST Controller to serve an intelligent customer support bot.
