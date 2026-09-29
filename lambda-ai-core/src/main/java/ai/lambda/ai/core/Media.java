@@ -7,8 +7,11 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -56,6 +59,7 @@ public final class Media {
     private final String name;
     // Encoded once: the same media is sent again on every model call of a run.
     private volatile String base64;
+    private volatile String sha256;
 
     private Media(String mimeType, byte[] data, String url, String name) {
         this.mimeType = Objects.requireNonNull(mimeType, "mimeType must not be null").toLowerCase(Locale.ROOT);
@@ -148,6 +152,24 @@ public final class Media {
         String encoded = base64;
         if (encoded == null) base64 = encoded = Base64.getEncoder().encodeToString(data);
         return encoded;
+    }
+
+    /**
+     * The SHA-256 of the bytes as lowercase hex, or null for URL media. Identical files have the
+     * same value, so it can name or de-duplicate stored media. Computed once.
+     */
+    public String sha256() {
+        if (data == null) return null;
+        String hash = sha256;
+        if (hash == null) {
+            try {
+                sha256 = hash = HexFormat.of().formatHex(
+                        MessageDigest.getInstance("SHA-256").digest(data));
+            } catch (NoSuchAlgorithmException e) {
+                throw new IllegalStateException("SHA-256 is not available", e);
+            }
+        }
+        return hash;
     }
 
     /** A {@code data:} URL holding the bytes, or the plain URL for URL media. */

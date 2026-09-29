@@ -138,8 +138,9 @@ agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https:
 
 - `Media.fromFile(path)` detects the type from the extension; `Media.fromUrl(url)` lets the
   provider fetch it where supported (`capabilities().mediaUrls()`), otherwise load the bytes.
-- Media is stored with the session (as base64 in `JsonlSessionStore` files), so large files make
-  large sessions; context strategies count text only.
+- `JsonlSessionStore` keeps media as files next to the session (`<id>.media/<sha256>.<ext>`),
+  so the JSONL stays small, identical files are stored once, and saves do not rewrite them.
+  Media is still sent to the model on every call; context strategies count text only.
 - Plain-text documents (`text/*`) are sent as text to OpenAI-compatible providers and as text
   documents to Claude.
 - `OpenAICompatibleProvider.custom(name, baseUrl)` connects any other Chat Completions server
