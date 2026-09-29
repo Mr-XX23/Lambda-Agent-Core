@@ -72,6 +72,7 @@ public final class Message {
                 tObj.put("id", tc.getId());
                 tObj.put("name", tc.getName());
                 tObj.put("argumentsJson", tc.getArgumentsJson());
+                if (tc.getSignature() != null) tObj.put("signature", tc.getSignature());
                 tcArray.put(tObj);
             }
             obj.put("toolCalls", tcArray);
@@ -93,7 +94,8 @@ public final class Message {
                 tcs.add(new ToolCall(
                         tObj.getString("id"),
                         tObj.getString("name"),
-                        tObj.getString("argumentsJson")
+                        tObj.getString("argumentsJson"),
+                        tObj.optString("signature", null)
                 ));
             }
         }

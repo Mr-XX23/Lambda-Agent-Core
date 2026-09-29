@@ -69,23 +69,30 @@ public final class Agent {
 
             for (AgentEventListener l : listeners) l.onIterationStart(iteration);
 
-            // Call the model with the current conversation and tool schemas, using streaming.
-            ChatResponse response = config.getModelClient().streamChat(
+            // Optimize history (truncation/summarization) using the configured strategy
+            List<Message> optimizedHistory = config.getContextStrategy().optimize(
                     session.getMessages(),
+                    config.getModelClient()
+            );
+
+            // Call the model with the OPTIMIZED conversation and tool schemas, using streaming.
+            ChatResponse response = config.getModelClient().streamChat(
+                    optimizedHistory,
                     toolSchemas,
                     delta -> {
                         for (AgentEventListener l : listeners) l.onAssistantDelta(delta);
                     }
             );
 
-            // Add the assistant's response to the conversation.
-            Message  assistant = response.getAssistantMessage();
+            // Check if the model requested any tool calls.
+            List<ToolCall> calls = response.getToolCalls();
+
+            // Add the assistant's response to the conversation. The history must record which
+            // tools the model asked for, or the TOOL results below would have nothing to answer.
+            Message assistant = withToolCalls(response.getAssistantMessage(), calls);
             session.getMessages().add(assistant);
 
             for (AgentEventListener l : listeners) l.onAssistantMessage(assistant);
-
-            // Check if the model requested any tool calls.
-            List<ToolCall> calls = response.getToolCalls();
 
             if (calls == null || calls.isEmpty()) {
                 // No tools requested -> we're done
@@ -105,7 +112,9 @@ public final class Agent {
                     var toolMessage = new Message(
                             Role.TOOL,
                             msg,
-                            call.getId()
+                            call.getId(),
+                            call.getName(),
+                            null
                     );
 
                     // Add the error message to the session so the model can see it in the next turn.
@@ -148,8 +157,10 @@ public final class Agent {
                     // Add a TOOL message with the error content.
                     var toolMessage = new Message(
                             Role.TOOL,
-                            errorContent,
-                            call.getId()
+                            Truncation.keepHeadAndTail(errorContent, config.getMaxToolResultChars()),
+                            call.getId(),
+                            call.getName(),
+                            null
                     );
 
                     // Add the error message to the session so the model can see it in the next turn.
@@ -159,9 +170,10 @@ public final class Agent {
                 }
 
                 // Add the tool result as a TOOL message in the conversation, so the model can see the result in the next turn.
+                // Huge results are shortened here; listeners above already received the full text.
                 var toolMessage = new Message(
                         Role.TOOL,
-                        result.getContent(),
+                        Truncation.keepHeadAndTail(result.getContent(), config.getMaxToolResultChars()),
                         call.getId(),
                         call.getName(),
                         null
@@ -177,5 +189,12 @@ public final class Agent {
                 "[lambda-agent-core] Stopped after max iterations.",
                 session
         );
+    }
+
+    private static Message withToolCalls(Message assistant, List<ToolCall> calls) {
+        if (calls == null || calls.isEmpty() || !assistant.getToolCalls().isEmpty()) {
+            return assistant;
+        }
+        return new Message(Role.ASSISTANT, assistant.getContent(), null, null, calls);
     }
 }

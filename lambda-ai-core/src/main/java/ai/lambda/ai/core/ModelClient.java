@@ -7,4 +7,6 @@ public interface ModelClient {
     ChatResponse chat(List<Message> messages, List<ToolSchema> toolSchemas);
 
     ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta);
+
+    int countTokens(List<Message> messages);
 }

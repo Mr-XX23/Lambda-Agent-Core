@@ -16,6 +16,8 @@
         <module>examples/simple-chat-with-tools</module>
         <module>examples/simple-chat-with-JSONL-file-based-session-storage</module>
         <module>examples/todo-agent</module>
+        <module>examples/simple-history-truncation</module>
+        <module>examples/simple-streaming-chat</module>
     </modules>
 
     <properties>
@@ -37,6 +39,24 @@
                 <artifactId>lambda-agent-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>5.11.4</version>
+                <scope>test</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.2</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
 </project>
