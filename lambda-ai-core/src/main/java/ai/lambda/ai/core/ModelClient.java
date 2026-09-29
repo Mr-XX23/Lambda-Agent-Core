@@ -9,6 +9,14 @@ public interface ModelClient {
     ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta);
 
     /**
+     * What this client's model accepts. The default is text only, with tool calling; clients
+     * that support images, audio, video or documents override it.
+     */
+    default ModelCapabilities capabilities() {
+        return ModelCapabilities.textOnly();
+    }
+
+    /**
      * Counts the tokens these messages use. The default is a rough estimate of about four
      * characters per token; clients whose provider has a token-counting API override it.
      */

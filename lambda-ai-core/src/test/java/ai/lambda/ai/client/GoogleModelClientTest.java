@@ -166,6 +166,41 @@ class GoogleModelClientTest {
     }
 
     @Test
+    void sendsMediaAsInlineDataOrFileData() {
+        serve(n -> Reply.ok(TEXT_STREAM));
+        Message message = Message.user("Compare these",
+                Media.of(new byte[]{1, 2, 3}, "image/png"),
+                Media.of(new byte[]{4}, "audio/mpeg"),
+                Media.fromUrl("https://generativelanguage.googleapis.com/v1beta/files/abc", "video/mp4"),
+                Media.of(new byte[]{5}, "application/pdf"));
+
+        client(FAST).streamChat(List.of(message), List.of(), null);
+
+        JSONArray parts = new JSONObject(requestBodies.get(0)).getJSONArray("contents").getJSONObject(0).getJSONArray("parts");
+        assertEquals("Compare these", parts.getJSONObject(0).getString("text"));
+        JSONObject image = parts.getJSONObject(1).getJSONObject("inlineData");
+        assertEquals("image/png", image.getString("mimeType"));
+        assertEquals("AQID", image.getString("data"));
+        assertEquals("audio/mpeg", parts.getJSONObject(2).getJSONObject("inlineData").getString("mimeType"));
+        JSONObject video = parts.getJSONObject(3).getJSONObject("fileData");
+        assertEquals("video/mp4", video.getString("mimeType"));
+        assertEquals("https://generativelanguage.googleapis.com/v1beta/files/abc", video.getString("fileUri"));
+        assertEquals("application/pdf", parts.getJSONObject(4).getJSONObject("inlineData").getString("mimeType"));
+    }
+
+    @Test
+    void mediaTheModelCannotTakeFailsBeforeAnyRequest() {
+        serve(n -> Reply.ok(TEXT_STREAM));
+        GoogleModelClient textOnly = client(FAST).withCapabilities(ModelCapabilities.textOnly());
+
+        UnsupportedMediaException e = assertThrows(UnsupportedMediaException.class, () -> textOnly.streamChat(
+                List.of(Message.user("look", Media.of(new byte[]{1}, "image/png"))), List.of(), null));
+
+        assertTrue(e.getMessage().contains("does not accept image input"), e.getMessage());
+        assertEquals(0, calls.get());
+    }
+
+    @Test
     void retriesServerErrorThenSucceeds() {
         serve(n -> n == 1 ? new Reply(503, "{\"error\":\"overloaded\"}", 0) : Reply.ok(TEXT_STREAM));
 

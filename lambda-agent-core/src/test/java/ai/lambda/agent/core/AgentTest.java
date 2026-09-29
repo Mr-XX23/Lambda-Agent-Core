@@ -144,6 +144,26 @@ class AgentTest {
     }
 
     @Test
+    void mediaIsSentToTheModelAndKeptInTheSession() {
+        var model = new FakeModelClient().replyText("a cat");
+        var photo = ai.lambda.ai.core.Media.of(new byte[]{1, 2, 3}, "image/jpeg");
+
+        AgentResult result = agent(model, List.of(), null).run(SESSION, "What is this?", photo);
+
+        Message sent = model.requests.get(0).get(1);
+        assertEquals("What is this?", sent.getContent());
+        assertEquals(List.of(photo), sent.getMedia());
+        assertEquals(List.of(photo), result.getSession().getMessages().get(1).getMedia());
+    }
+
+    @Test
+    void runRejectsNonUserMessages() {
+        var agent = agent(new FakeModelClient(), List.of(), null);
+        assertThrows(IllegalArgumentException.class,
+                () -> agent.run(SESSION, new Message(Role.ASSISTANT, "hi", null)));
+    }
+
+    @Test
     void contextStrategyTrimsWhatModelSeesButNotTheSession() {
         var model = new FakeModelClient().replyText("a").replyText("b");
         var config = new AgentConfig("sys", model, List.of(), 5, null, new SlidingWindowStrategy(2));

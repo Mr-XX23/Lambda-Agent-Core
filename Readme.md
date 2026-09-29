@@ -23,7 +23,8 @@ If you want to build an AI assistant in Java that can read local files, call you
 
 ## ✨ Key Features
 
-- **🔌 Pluggable LLM Providers:** Abstracted `ModelClient` interface with Gemini and OpenAI clients, normalized usage/finish metadata, streaming tool-call assembly, and provider contract tests.
+- **🔌 Nine LLM Providers:** OpenAI, Claude, Gemini, OpenRouter, xAI, Mistral, Perplexity, Experiential Labs and Ollama behind one `ModelClient` interface, with normalized usage/finish metadata and streaming tool calls.
+- **🖼️ Images, Audio, Video and PDFs:** Send media to models that accept it (each client declares what its model takes and rejects the rest with a clear message), and generate images, speech and video, or transcribe audio, directly or as agent tools.
 - **🛠️ Autonomous Tool Calling:** Define tools using standard Java interfaces. The agent automatically decides when to call them and maps JSON arguments to your Java methods.
 - **🧠 Persistent Memory:** Built-in `JsonlSessionStore` ensures your AI agent never loses context, with JDBC and Redis checkpoint stores for durable, versioned workflow state.
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
@@ -53,7 +54,8 @@ If you want to build an AI assistant in Java that can read local files, call you
 ### 1. Requirements
 * Java 25 or higher
 * Maven 3.8+
-* Google Gemini API Key
+* An API key for a supported provider (the quick-start example uses Google Gemini; see
+  [Providers and Media](#-providers-and-media) for the others, or run Ollama locally without a key)
 
 ### 2. Set Your API Key
 Export your Gemini API key to your environment variables:
@@ -191,6 +193,40 @@ fields, wrong types, unknown fields, or fails a validator or the record's own co
 every problem is sent back with its path (like `$.lines[1].quantity`) and the model tries
 again. `StructuredOutput.ofSchema(json)` takes a raw JSON Schema and returns a `Map`. See
 [`examples/structured-output`](examples/structured-output).
+
+## 🌍 Providers and Media
+
+| Provider | Client | Media it accepts | Can generate |
+|---|---|---|---|
+| OpenAI | `OpenAIModelClient.openAI(key, "gpt-5")` | images, PDFs; audio on audio models | images, speech, transcription |
+| Claude | `new AnthropicModelClient(key)` (module `lambda-ai-anthropic`) | images, PDFs, text documents | — |
+| Gemini | `new GoogleModelClient(key, "gemini-3.8-flash")` | images, audio, video, PDFs | images, speech, video (Veo) |
+| OpenRouter | `OpenAIModelClient.openRouter(key, "provider/model")` | images, audio, video, PDFs (model-dependent) | images |
+| xAI | `OpenAIModelClient.xai(key, "grok-4.7")` | images | images, speech, transcription, video |
+| Mistral | `OpenAIModelClient.mistral(key, "mistral-medium-latest")` | images, PDFs; audio on Voxtral | speech, transcription |
+| Perplexity | `ResponsesModelClient.perplexity(key, "perplexity/sonar")` | images | — |
+| Experiential Labs | `OpenAIModelClient.experientialLabs(key, "qwen3.8-27b")` | images | — |
+| Ollama | `OpenAIModelClient.ollama("gemma4")` | images (files only) | — |
+
+Attach media to a run, and give agents generation tools:
+
+```java
+agent.run("s1", "What does this receipt total?", Media.fromFile(Path.of("receipt.jpg")));
+agent.run("s1", "Summarize the call", Media.fromFile(Path.of("call.mp3")));        // Gemini, Mistral Voxtral, ...
+
+Media logo = GeminiMedia.images(key, "gemini-3.1-flash-image").generateImage("A minimalist fox logo");
+Media voice = new OpenAISpeechGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-4o-mini-tts").generateSpeech("Hello!");
+Media clip = GeminiMedia.videos(key, "veo-3.1-generate-preview").generateVideo(VideoRequest.of("Waves at dusk"));
+
+List<AgentTool> tools = List.of(MediaTools.generateImage(images, Path.of("out")),
+                                MediaTools.transcribeAudio(transcriber, Path.of(".")));
+```
+
+A client checks every request against `capabilities()` before sending it: an audio file for a
+text-and-image model fails with, for example, *"OpenAI model 'gpt-5' does not accept audio input
+(audio/wav). It accepts: document, image, text"*. Override with `withCapabilities(...)` for models
+that accept more or less than their provider's default. See
+[`examples/multimodal-agent`](examples/multimodal-agent), which runs on any of the nine providers.
 
 ## 🔌 Using MCP Servers
 

@@ -20,6 +20,9 @@ import java.util.function.ToIntFunction;
  *       current turn is too long, its oldest tool steps are dropped instead.</li>
  *   <li>The newest tool step is always kept. If it is too big, its tool results are
  *       shortened in the returned list (the session itself is not changed).</li>
+ *   <li>When earlier messages are dropped, provider state (such as Claude's signed thinking
+ *       blocks) is removed from the kept messages: it is bound to the full conversation it came
+ *       from, and providers reject it once earlier turns are gone.</li>
  * </ul>
  */
 final class HistoryTrimmer {
@@ -33,6 +36,17 @@ final class HistoryTrimmer {
      * @param budget  max total cost, including the system prompt
      */
     static List<Message> trim(List<Message> history, ToIntFunction<Message> cost, int budget) {
+        List<Message> kept = trimBlocks(history, cost, budget);
+        java.util.Set<Message> keptSet = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        keptSet.addAll(kept);
+        boolean dropped = history.stream().anyMatch(m -> !keptSet.contains(m));
+        if (!dropped) return kept;
+        List<Message> stripped = new ArrayList<>(kept.size());
+        for (Message m : kept) stripped.add(m.getProviderState() == null ? m : m.withProviderState(null));
+        return stripped;
+    }
+
+    private static List<Message> trimBlocks(List<Message> history, ToIntFunction<Message> cost, int budget) {
         if (history.isEmpty()) return history;
 
         Message system = history.get(0).getRole() == Role.SYSTEM ? history.get(0) : null;

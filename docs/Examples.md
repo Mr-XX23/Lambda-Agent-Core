@@ -127,3 +127,37 @@ String json = result.run().getFinalText();   // the same answer as JSON
   `BigInteger`/`BigDecimal`), `boolean`, enums, `List`, `Set`, arrays, `Map<String, V>`,
   `Optional`, `LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `OffsetDateTime`, `UUID`,
   `URI`. Records that contain themselves are not supported.
+
+## Providers, media and generation
+
+```java
+ModelClient model = OpenAIModelClient.openRouter(key, "google/gemini-3.8-flash")
+        .withCapabilities(ModelCapabilities.of(Modality.IMAGE, Modality.VIDEO).withMediaUrls(Modality.VIDEO));
+agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https://example.com/clip.mp4")));
+```
+
+- `Media.fromFile(path)` detects the type from the extension; `Media.fromUrl(url)` lets the
+  provider fetch it where supported (`capabilities().mediaUrls()`), otherwise load the bytes.
+- Media is stored with the session (as base64 in `JsonlSessionStore` files), so large files make
+  large sessions; context strategies count text only.
+- Plain-text documents (`text/*`) are sent as text to OpenAI-compatible providers and as text
+  documents to Claude.
+- `OpenAICompatibleProvider.custom(name, baseUrl)` connects any other Chat Completions server
+  (vLLM, LM Studio, a gateway); `withHeaders(...)` adds headers such as OpenRouter's
+  `HTTP-Referer`.
+- Generation: `ImageGenerator` (`OpenAIImageGenerator`, `GeminiMedia.images`,
+  `OpenRouterImageGenerator`), `SpeechGenerator` (`OpenAISpeechGenerator`, `GeminiMedia.speech`,
+  `XaiMedia.speech`, `MistralMedia.speech`), `VideoGenerator` (`GeminiMedia.videos` for Veo,
+  `XaiMedia.videos`; both wait for the background job, up to `VideoRequest.timeout()`), and
+  `Transcriber` (`OpenAITranscriber`, `XaiMedia.transcriber`, `MistralMedia.transcriber`).
+  OpenAI's video API (Sora) and Google's Imagen were shut down by their providers, so they are not
+  offered.
+- `MediaTools.generateImage/generateSpeech/generateVideo(generator, outputDir)` and
+  `MediaTools.transcribeAudio(transcriber, workspace)` expose these as agent tools; generated files
+  are saved to `outputDir`, and transcription only reads files inside `workspace`.
+- Claude (`lambda-ai-anthropic`) stores each assistant turn, including signed thinking blocks, as
+  `ProviderState` and replays it unchanged. It asks the API to drop, rather than reject, thinking
+  blocks whose conversation changed (`withMismatchedThinkingDropped(false)` to fail instead), and
+  enables server-side refusal fallbacks on the models that support them
+  (`withRefusalFallbacks(false)` to turn off). History trimming removes provider state from the
+  turns it keeps.

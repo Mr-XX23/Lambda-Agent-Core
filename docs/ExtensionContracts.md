@@ -7,6 +7,17 @@ with an assistant message, normalized `FinishReason`, usage metadata, and tool c
 `streamChat` should invoke its delta callback in order and must surface transport and
 malformed-response failures.
 
+`ModelClient.capabilities()` describes the media kinds the model accepts, whether it can call
+tools, and which media may be given as URLs. It defaults to text only with tools; clients must
+check requests against it (`ModelCapabilities.check`) and throw `UnsupportedMediaException` rather
+than silently dropping media. `Message.getMedia()` carries attachments; `ProviderState` carries
+provider data that must be replayed unchanged and is only read by the client whose provider name
+matches.
+
+`ImageGenerator`, `SpeechGenerator`, `VideoGenerator` and `Transcriber` (package
+`ai.lambda.ai.generation`) are the generation boundaries; they return `Media` bytes, and video
+generators block until the provider's job finishes or the request's timeout passes.
+
 `AgentTool` is the tool boundary. Names and JSON schemas are stable model-facing
 identifiers. Implementations may add `ToolPolicy`, `TypedToolInput`, capabilities, and
 argument validation. Authorization is evaluated before validation and execution.

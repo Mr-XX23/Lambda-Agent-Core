@@ -11,6 +11,7 @@
 
     <modules>
         <module>lambda-ai-core</module>
+        <module>lambda-ai-anthropic</module>
         <module>lambda-agent-core</module>
         <module>lambda-agent-mcp</module>
         <module>lambda-agent-spring-boot-starter</module>
@@ -24,6 +25,7 @@
         <module>examples/multi-agent</module>
         <module>examples/mcp-agent</module>
         <module>examples/structured-output</module>
+        <module>examples/multimodal-agent</module>
         <module>examples/software-delivery-agent</module>
     </modules>
 
@@ -35,6 +37,7 @@
         <java.version>25</java.version>
         <junit.version>5.11.4</junit.version>
         <mcp.version>2.0.1</mcp.version>
+        <anthropic.version>2.66.0</anthropic.version>
     </properties>
 
     <dependencyManagement>
@@ -59,6 +62,11 @@
             <dependency>
                 <groupId>ai.lambda</groupId>
                 <artifactId>lambda-agent-mcp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ai.lambda</groupId>
+                <artifactId>lambda-ai-anthropic</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -1,6 +1,7 @@
 package ai.lambda.agent.core;
 
 import ai.lambda.ai.core.ChatResponse;
+import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.Role;
 import ai.lambda.ai.core.ToolCall;
@@ -112,7 +113,33 @@ public final class Agent {
     }
 
     public AgentResult run(String sessionId, String userInput, CancellationToken cancellationToken) {
-        return runWithTrace(sessionId, userInput, cancellationToken, null).result();
+        return runWithTrace(sessionId, new Message(Role.USER, userInput, null), cancellationToken, null).result();
+    }
+
+    /**
+     * Runs the agent on text plus images, audio, video or documents, for example
+     * {@code agent.run("s1", "What's in this photo?", Media.fromFile(Path.of("photo.jpg")))}.
+     * The model client rejects media its model cannot take, with a clear message.
+     */
+    public AgentResult run(String sessionId, String userInput, Media... media) {
+        return run(sessionId, Message.user(userInput, media));
+    }
+
+    /** Runs the agent on a user message (text and optional media). */
+    public AgentResult run(String sessionId, Message userMessage) {
+        return run(sessionId, userMessage, new CancellationToken());
+    }
+
+    public AgentResult run(String sessionId, Message userMessage, CancellationToken cancellationToken) {
+        return runWithTrace(sessionId, requireUser(userMessage), cancellationToken, null).result();
+    }
+
+    private static Message requireUser(Message message) {
+        java.util.Objects.requireNonNull(message, "userMessage must not be null");
+        if (message.getRole() != Role.USER) {
+            throw new IllegalArgumentException("Expected a USER message, got " + message.getRole());
+        }
+        return message;
     }
 
     /**
@@ -127,12 +154,23 @@ public final class Agent {
 
     public <T> StructuredResult<T> run(String sessionId, String userInput, StructuredOutput<T> output,
                                        CancellationToken cancellationToken) {
+        return run(sessionId, new Message(Role.USER, userInput, null), output, cancellationToken);
+    }
+
+    /** Like {@link #run(String, String, StructuredOutput)}, for a user message that may carry media. */
+    public <T> StructuredResult<T> run(String sessionId, Message userMessage, StructuredOutput<T> output) {
+        return run(sessionId, userMessage, output, new CancellationToken());
+    }
+
+    public <T> StructuredResult<T> run(String sessionId, Message userMessage, StructuredOutput<T> output,
+                                       CancellationToken cancellationToken) {
+        requireUser(userMessage);
         java.util.Objects.requireNonNull(output, "output must not be null");
         if (toolRegistry.containsKey(StructuredOutput.TOOL_NAME)) {
             throw new IllegalArgumentException("A tool is already named '" + StructuredOutput.TOOL_NAME
                     + "', which structured output needs");
         }
-        RunOutcome outcome = runWithTrace(sessionId, userInput, cancellationToken, output);
+        RunOutcome outcome = runWithTrace(sessionId, userMessage, cancellationToken, output);
         @SuppressWarnings("unchecked")
         T value = (T) outcome.value();
         return new StructuredResult<>(value, outcome.result());
@@ -141,18 +179,18 @@ public final class Agent {
     private record RunOutcome(AgentResult result, Object value) {
     }
 
-    private RunOutcome runWithTrace(String sessionId, String userInput, CancellationToken cancellationToken,
+    private RunOutcome runWithTrace(String sessionId, Message userMessage, CancellationToken cancellationToken,
                                     StructuredOutput<?> output) {
         String runId = UUID.randomUUID().toString();
         TraceContext.activate(runId);
         try {
-            return runInternal(sessionId, userInput, cancellationToken, runId, output);
+            return runInternal(sessionId, userMessage, cancellationToken, runId, output);
         } finally {
             TraceContext.clear();
         }
     }
 
-    private RunOutcome runInternal(String sessionId, String userInput,
+    private RunOutcome runInternal(String sessionId, Message userMessage,
                                    CancellationToken cancellationToken, String runId,
                                    StructuredOutput<?> output) {
         Instant deadline = Instant.now().plus(config.getRunTimeout());
@@ -171,11 +209,7 @@ public final class Agent {
         }
 
         // Add the new user message.
-        session.getMessages().add(new Message(
-                Role.USER,
-                userInput,
-                null
-        ));
+        session.getMessages().add(userMessage);
 
         // With structured output, the model also gets the submit_result tool.
         List<ToolSchema> runTools = toolSchemas;

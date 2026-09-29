@@ -156,6 +156,21 @@ class ContextStrategyTest {
     }
 
     @Test
+    void droppingEarlierTurnsRemovesProviderStateFromKeptMessages() {
+        var thinking = new ai.lambda.ai.core.ProviderState("anthropic", "[{\"type\":\"thinking\"}]");
+        List<Message> history = List.of(system("S"), user("old"), assistant("old answer").withProviderState(thinking),
+                user("new"), assistant("new answer").withProviderState(thinking));
+
+        List<Message> trimmed = new SlidingWindowStrategy(3).optimize(history, new FakeModelClient());
+        List<Message> untouched = new SlidingWindowStrategy(10).optimize(history, new FakeModelClient());
+
+        assertEquals(List.of("S", "new", "new answer"), contents(trimmed));
+        assertNull(trimmed.get(2).getProviderState(), "bound to the full conversation, so it must go");
+        assertSame(history, untouched, "nothing dropped, nothing changed");
+        assertEquals(thinking, history.get(4).getProviderState(), "the session itself keeps it");
+    }
+
+    @Test
     void tokenLimitAlwaysKeepsTheLatestUserMessage() {
         List<Message> history = List.of(system("sys"), user("hi"), assistant("hello"), user("x".repeat(100)));
 

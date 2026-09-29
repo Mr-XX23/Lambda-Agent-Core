@@ -29,6 +29,12 @@ public final class GoogleModelClient implements ModelClient {
     private final String baseUrl;
     private final String apiKey;
     private final String modelName;
+    private final ModelCapabilities capabilities;
+
+    /** Gemini models take images, audio, video and PDFs; files in Google's File API can be given as URLs. */
+    public static final ModelCapabilities DEFAULT_CAPABILITIES = ModelCapabilities
+            .of(Modality.IMAGE, Modality.AUDIO, Modality.VIDEO, Modality.DOCUMENT)
+            .withMediaUrls(Modality.IMAGE, Modality.AUDIO, Modality.VIDEO, Modality.DOCUMENT);
 
     public GoogleModelClient(String apiKey, String modelName) {
         this(apiKey, modelName, HttpOptions.defaults());
@@ -40,11 +46,30 @@ public final class GoogleModelClient implements ModelClient {
 
     // Visible for tests: lets a local server stand in for the Gemini API.
     GoogleModelClient(String apiKey, String modelName, HttpOptions options, String baseUrl) {
+        this(apiKey, modelName, options, baseUrl, DEFAULT_CAPABILITIES);
+    }
+
+    private GoogleModelClient(String apiKey, String modelName, HttpOptions options, String baseUrl,
+                              ModelCapabilities capabilities) {
+        this.capabilities = Objects.requireNonNull(capabilities, "capabilities must not be null");
         this.apiKey = Objects.requireNonNull(apiKey, "apiKey must not be null");
         this.modelName = Objects.requireNonNull(modelName, "modelName must not be null");
         this.options = Objects.requireNonNull(options, "options must not be null");
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl must not be null");
         this.httpClient = HttpRetry.newClient(options);
+    }
+
+    /**
+     * A copy with different capabilities, for models that accept less (or more) than the
+     * defaults, for example a text-only model.
+     */
+    public GoogleModelClient withCapabilities(ModelCapabilities capabilities) {
+        return new GoogleModelClient(apiKey, modelName, options, baseUrl, capabilities);
+    }
+
+    @Override
+    public ModelCapabilities capabilities() {
+        return capabilities;
     }
 
     /** What has arrived so far while reading a streamed response. */
@@ -180,6 +205,7 @@ public final class GoogleModelClient implements ModelClient {
     }
 
     private JSONObject buildRequestBody(List<Message> messages, List<ToolSchema> tools) {
+        capabilities.check(messages, tools, "Gemini", modelName);
         JSONObject requestBody = new JSONObject();
 
         // 1. Handle SYSTEM instruction separately
@@ -273,6 +299,9 @@ public final class GoogleModelClient implements ModelClient {
                 textPart.put("text", m.getContent());
                 parts.put(textPart);
             }
+            for (Media media : m.getMedia()) {
+                parts.put(mediaPart(media));
+            }
 
             if (m.getRole() == Role.ASSISTANT && m.getToolCalls() != null && !m.getToolCalls().isEmpty()) {
                 for (ToolCall tc : m.getToolCalls()) {
@@ -296,6 +325,16 @@ public final class GoogleModelClient implements ModelClient {
             emptyText.put("text", " ");
             parts.put(emptyText);
         }
+    }
+
+    // Bytes go inline; URLs (Google File API URIs, or other URLs Gemini can fetch) go as fileData.
+    static JSONObject mediaPart(Media media) {
+        if (media.hasData()) {
+            return new JSONObject().put("inlineData",
+                    new JSONObject().put("mimeType", media.mimeType()).put("data", media.base64()));
+        }
+        return new JSONObject().put("fileData",
+                new JSONObject().put("mimeType", media.mimeType()).put("fileUri", media.url()));
     }
 
     @Override
