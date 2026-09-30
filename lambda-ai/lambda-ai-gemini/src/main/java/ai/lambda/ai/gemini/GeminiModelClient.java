@@ -63,7 +63,7 @@ public final class GeminiModelClient implements ModelClient {
     private final Client client;
     private final String model;
     private final ModelCapabilities capabilities;
-    private final Integer requestTimeoutMillis;
+    private final HttpOptions options;
 
     public GeminiModelClient(String apiKey, String model) {
         this(apiKey, model, HttpOptions.defaults());
@@ -77,25 +77,24 @@ public final class GeminiModelClient implements ModelClient {
      * @param baseUrl another API root, such as a proxy that forwards to Gemini; null for Google's own
      */
     public GeminiModelClient(String apiKey, String model, HttpOptions options, String baseUrl) {
-        this(GeminiClients.create(apiKey, options, baseUrl), model, DEFAULT_CAPABILITIES,
-                (int) Math.min(Integer.MAX_VALUE, options.requestTimeout().toMillis()));
+        this(GeminiClients.create(apiKey, options, baseUrl), model, DEFAULT_CAPABILITIES, options);
     }
 
     /** Uses an SDK client you configured yourself (for example for Vertex AI). */
     public GeminiModelClient(Client client, String model) {
-        this(client, model, DEFAULT_CAPABILITIES, null);
+        this(client, model, DEFAULT_CAPABILITIES, HttpOptions.defaults());
     }
 
-    private GeminiModelClient(Client client, String model, ModelCapabilities capabilities, Integer requestTimeoutMillis) {
+    private GeminiModelClient(Client client, String model, ModelCapabilities capabilities, HttpOptions options) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities must not be null");
-        this.requestTimeoutMillis = requestTimeoutMillis;
+        this.options = Objects.requireNonNull(options, "options must not be null");
     }
 
     /** A copy with different capabilities, for example for a text-only model. */
     public GeminiModelClient withCapabilities(ModelCapabilities capabilities) {
-        return new GeminiModelClient(client, model, capabilities, requestTimeoutMillis);
+        return new GeminiModelClient(client, model, capabilities, options);
     }
 
     @Override
@@ -109,10 +108,9 @@ public final class GeminiModelClient implements ModelClient {
 
     @Override
     public ChatResponse chat(List<Message> messages, List<ToolSchema> tools) {
-        // A single reply is bounded by the request timeout; streamed replies are not, since long
-        // answers keep arriving for longer than that.
+        // A single reply arrives all at once, so the request timeout bounds the whole call.
         GenerateContentResponse response = client.models.generateContent(model, contents(messages, tools),
-                config(messages, tools, true));
+                config(messages, tools, options.requestTimeout()));
         Reply reply = new Reply();
         reply.add(response, null);
         if (response.candidates().map(List::isEmpty).orElse(true)) {
@@ -124,9 +122,17 @@ public final class GeminiModelClient implements ModelClient {
     @Override
     public ChatResponse streamChat(List<Message> messages, List<ToolSchema> tools, Consumer<String> onDelta) {
         Reply reply = new Reply();
-        try (ResponseStream<GenerateContentResponse> stream =
-                     client.models.generateContentStream(model, contents(messages, tools), config(messages, tools, false))) {
+        // A streamed reply may take long in total, so the whole call gets the longer call timeout;
+        // the client's read timeout stops it if no more of it arrives within the request timeout.
+        try (ResponseStream<GenerateContentResponse> stream = client.models.generateContentStream(model,
+                     contents(messages, tools), config(messages, tools, options.callTimeout()))) {
             for (GenerateContentResponse chunk : stream) reply.add(chunk, onDelta);
+        } catch (RuntimeException failure) {
+            if (GeminiClients.timedOut(failure)) {
+                throw new RuntimeException("Gemini stopped sending data for " + options.requestTimeout().toMillis() / 1000.0
+                        + " s; the response was abandoned (raise the request timeout for slower models)", failure);
+            }
+            throw failure;
         }
         return reply.toResponse();
     }
@@ -138,7 +144,9 @@ public final class GeminiModelClient implements ModelClient {
         List<Content> contents = new ArrayList<>();
         systemInstruction(messages).ifPresent(system -> contents.add(system.toBuilder().role("user").build()));
         contents.addAll(contents(messages, List.of()));
-        return client.models.countTokens(model, contents, CountTokensConfig.builder().build()).totalTokens().orElse(0);
+        CountTokensConfig config = CountTokensConfig.builder()
+                .httpOptions(GeminiClients.requestOptions(options.requestTimeout(), Map.of())).build();
+        return client.models.countTokens(model, contents, config).totalTokens().orElse(0);
     }
 
     /** What has arrived so far of one reply, from one response or many streamed chunks. */
@@ -169,7 +177,9 @@ public final class GeminiModelClient implements ModelClient {
             // The calls stay on the message: Gemini must see its own functionCall (with its
             // thoughtSignature) before the matching functionResponse on the next turn.
             Message message = new Message(Role.ASSISTANT, text.toString(), null, null, toolCalls);
-            return new ChatResponse(message, toolCalls, toolCalls.isEmpty() ? finish : FinishReason.TOOL_CALLS, usage);
+            // Calls made while the answer hit the length limit may be cut off, so LENGTH is kept.
+            FinishReason reason = toolCalls.isEmpty() || finish == FinishReason.LENGTH ? finish : FinishReason.TOOL_CALLS;
+            return new ChatResponse(message, toolCalls, reason, usage);
         }
     }
 
@@ -177,7 +187,7 @@ public final class GeminiModelClient implements ModelClient {
         FunctionCall call = part.functionCall().orElseThrow();
         Map<String, Object> args = call.args().orElse(Map.of());
         String signature = part.thoughtSignature().map(bytes -> Base64.getEncoder().encodeToString(bytes)).orElse(null);
-        return new ToolCall(call.id().orElseGet(() -> UUID.randomUUID().toString()), call.name().orElse(""),
+        return new ToolCall(call.id().orElseGet(() -> GeminiClients.GENERATED_ID + UUID.randomUUID()), call.name().orElse(""),
                 new JSONObject(args).toString(), signature);
     }
 
@@ -209,23 +219,37 @@ public final class GeminiModelClient implements ModelClient {
 
     private static void addParts(List<Part> parts, Message message) {
         if (message.getRole() == Role.TOOL) {
-            parts.add(Part.builder().functionResponse(FunctionResponse.builder()
+            FunctionResponse.Builder response = FunctionResponse.builder()
                     .name(message.getToolCallName() != null ? message.getToolCallName() : "unknown")
-                    .response(Map.of("result", message.getContent()))
-                    .build()).build());
+                    .response(Map.of("result", message.getContent()));
+            // Gemini's own call id matches the result to its call when one function is called twice.
+            if (!GeminiClients.madeUp(message.getToolCallId())) response.id(message.getToolCallId());
+            parts.add(Part.builder().functionResponse(response.build()).build());
             return;
         }
         if (!message.getContent().isEmpty()) parts.add(Part.builder().text(message.getContent()).build());
         for (Media media : message.getMedia()) parts.add(mediaPart(media));
         if (message.getRole() == Role.ASSISTANT) {
             for (ToolCall call : message.getToolCalls()) {
-                Part.Builder part = Part.builder().functionCall(FunctionCall.builder()
-                        .name(call.getName())
-                        .args(new JSONObject(call.getArgumentsJson()).toMap())
-                        .build());
+                FunctionCall.Builder functionCall = FunctionCall.builder().name(call.getName()).args(arguments(call.getArgumentsJson()));
+                if (!GeminiClients.madeUp(call.getId())) functionCall.id(call.getId());
+                Part.Builder part = Part.builder().functionCall(functionCall.build());
                 if (call.getSignature() != null) part.thoughtSignature(signatureBytes(call.getSignature()));
                 parts.add(part.build());
             }
+        }
+    }
+
+    /**
+     * A tool call's arguments as a map. Arguments that are not a JSON object (for example cut off
+     * when a reply hit the token limit) become an empty object, so the stored conversation stays
+     * usable instead of failing every later request.
+     */
+    static Map<String, Object> arguments(String json) {
+        try {
+            return new JSONObject(json == null || json.isBlank() ? "{}" : json).toMap();
+        } catch (org.json.JSONException notAnObject) {
+            return Map.of();
         }
     }
 
@@ -246,7 +270,7 @@ public final class GeminiModelClient implements ModelClient {
         return Part.builder().fileData(FileData.builder().mimeType(media.mimeType()).fileUri(media.url()).build()).build();
     }
 
-    private GenerateContentConfig config(List<Message> messages, List<ToolSchema> tools, boolean bounded) {
+    private GenerateContentConfig config(List<Message> messages, List<ToolSchema> tools, java.time.Duration timeout) {
         GenerateContentConfig.Builder config = GenerateContentConfig.builder();
         systemInstruction(messages).ifPresent(config::systemInstruction);
         if (tools != null && !tools.isEmpty()) {
@@ -265,9 +289,7 @@ public final class GeminiModelClient implements ModelClient {
             config.toolConfig(ToolConfig.builder()
                     .functionCallingConfig(FunctionCallingConfig.builder().mode("AUTO").build()).build());
         }
-        if (bounded && requestTimeoutMillis != null) {
-            config.httpOptions(com.google.genai.types.HttpOptions.builder().timeout(requestTimeoutMillis).build());
-        }
+        config.httpOptions(GeminiClients.requestOptions(timeout, Map.of()));
         return config.build();
     }
 
@@ -277,7 +299,9 @@ public final class GeminiModelClient implements ModelClient {
     }
 
     static ModelUsage usage(GenerateContentResponseUsageMetadata metadata) {
-        return new ModelUsage(metadata.promptTokenCount().orElse(0), metadata.candidatesTokenCount().orElse(0),
+        // Thinking is billed as output, so it counts as output here too.
+        return new ModelUsage(metadata.promptTokenCount().orElse(0),
+                metadata.candidatesTokenCount().orElse(0) + metadata.thoughtsTokenCount().orElse(0),
                 metadata.totalTokenCount().orElse(0));
     }
 

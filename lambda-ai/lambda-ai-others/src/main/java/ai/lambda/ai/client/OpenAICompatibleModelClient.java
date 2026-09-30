@@ -1,5 +1,6 @@
 package ai.lambda.ai.client;
 
+import ai.lambda.ai.core.StreamWatchdog;
 import ai.lambda.ai.core.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -126,13 +127,13 @@ public class OpenAICompatibleModelClient implements ModelClient {
 
         JSONObject body = new JSONObject(response.body());
         throwIfError(body);
-        JSONArray choices = body.getJSONArray("choices");
-        if (choices.isEmpty()) {
+        JSONArray choices = body.optJSONArray("choices");
+        if (choices == null || choices.isEmpty()) {
             throw new RuntimeException(provider.name() + " returned no choices");
         }
         JSONObject first = choices.getJSONObject(0);
         JSONObject message = first.getJSONObject("message");
-        String content = message.isNull("content") ? "" : message.optString("content", "");
+        String content = text(message.opt("content"));
         List<ToolCall> toolCalls = new ArrayList<>();
         JSONArray responseToolCalls = message.optJSONArray("tool_calls");
         if (responseToolCalls != null) {
@@ -161,51 +162,58 @@ public class OpenAICompatibleModelClient implements ModelClient {
         Map<Integer, StreamToolCall> calls = new LinkedHashMap<>();
         FinishReason finishReason = FinishReason.UNKNOWN;
         ModelUsage usage = ModelUsage.empty();
-        try (Stream<String> lines = response.body()) {
+        try (Stream<String> lines = response.body();
+             StreamWatchdog watchdog = new StreamWatchdog(provider.name(), options.requestTimeout(), lines::close)) {
             if (response.statusCode() >= 400) {
                 throw new RuntimeException(provider.name() + " streaming error: " + response.statusCode() + " "
-                        + lines.collect(Collectors.joining("\n")));
+                        + JsonHttp.shorten(lines.collect(Collectors.joining("\n"))));
             }
-            for (String line : (Iterable<String>) lines::iterator) {
-                // Other lines are blank separators or keep-alive comments (": ...").
-                if (!line.startsWith("data:")) continue;
-                String data = line.substring(5).trim();
-                if (data.isEmpty()) continue;
-                if ("[DONE]".equals(data)) break;
-                JSONObject chunk = new JSONObject(data);
-                throwIfError(chunk);
-                if (chunk.optJSONObject("usage") != null) usage = parseUsage(chunk);
-                JSONArray choices = chunk.optJSONArray("choices");
-                if (choices == null || choices.isEmpty()) continue;
-                JSONObject choice = choices.getJSONObject(0);
-                String reason = choice.optString("finish_reason", "");
-                if (!reason.isEmpty() && !choice.isNull("finish_reason")) finishReason = toFinishReason(reason);
-                JSONObject delta = choice.optJSONObject("delta");
-                if (delta == null) continue;
-                String piece = delta.isNull("content") ? "" : delta.optString("content", "");
-                if (!piece.isEmpty()) {
-                    text.append(piece);
-                    if (onDelta != null) onDelta.accept(piece);
-                }
-                JSONArray toolDeltas = delta.optJSONArray("tool_calls");
-                if (toolDeltas != null) {
-                    for (int i = 0; i < toolDeltas.length(); i++) {
-                        JSONObject item = toolDeltas.getJSONObject(i);
-                        int index = item.optInt("index", i);
-                        StreamToolCall call = calls.computeIfAbsent(index,
-                                ignored -> new StreamToolCall(item.optString("id", ""), "", new StringBuilder()));
-                        if (item.has("id") && !item.isNull("id")) call.id = item.getString("id");
-                        JSONObject function = item.optJSONObject("function");
-                        if (function != null) {
-                            if (function.has("name") && !function.isNull("name")) call.name = function.getString("name");
-                            Object args = function.opt("arguments");
-                            // Most providers stream argument text; some send the whole object at once.
-                            if (args instanceof JSONObject object) call.arguments.append(object);
-                            else if (args instanceof String s) call.arguments.append(s);
+            try {
+                for (String line : (Iterable<String>) lines::iterator) {
+                    watchdog.activity(); // keep-alive comments count too: the provider is still there
+                    // Other lines are blank separators or keep-alive comments (": ...").
+                    if (!line.startsWith("data:")) continue;
+                    String data = line.substring(5).trim();
+                    if (data.isEmpty()) continue;
+                    if ("[DONE]".equals(data)) break;
+                    JSONObject chunk = new JSONObject(data);
+                    throwIfError(chunk);
+                    if (chunk.optJSONObject("usage") != null) usage = parseUsage(chunk);
+                    JSONArray choices = chunk.optJSONArray("choices");
+                    if (choices == null || choices.isEmpty()) continue;
+                    JSONObject choice = choices.getJSONObject(0);
+                    String reason = choice.optString("finish_reason", "");
+                    if (!reason.isEmpty() && !choice.isNull("finish_reason")) finishReason = toFinishReason(reason);
+                    JSONObject delta = choice.optJSONObject("delta");
+                    if (delta == null) continue;
+                    String piece = text(delta.opt("content"));
+                    if (!piece.isEmpty()) {
+                        text.append(piece);
+                        if (onDelta != null) onDelta.accept(piece);
+                    }
+                    JSONArray toolDeltas = delta.optJSONArray("tool_calls");
+                    if (toolDeltas != null) {
+                        for (int i = 0; i < toolDeltas.length(); i++) {
+                            JSONObject item = toolDeltas.getJSONObject(i);
+                            int index = item.optInt("index", i);
+                            StreamToolCall call = calls.computeIfAbsent(index,
+                                    ignored -> new StreamToolCall(item.optString("id", ""), "", new StringBuilder()));
+                            if (item.has("id") && !item.isNull("id")) call.id = item.getString("id");
+                            JSONObject function = item.optJSONObject("function");
+                            if (function != null) {
+                                if (function.has("name") && !function.isNull("name")) call.name = function.getString("name");
+                                Object args = function.opt("arguments");
+                                // Most providers stream argument text; some send the whole object at once.
+                                if (args instanceof JSONObject object) call.arguments.append(object);
+                                else if (args instanceof String s) call.arguments.append(s);
+                            }
                         }
                     }
                 }
+            } catch (RuntimeException failure) {
+                throw watchdog.explain(failure);
             }
+            watchdog.check();
         }
         List<ToolCall> toolCalls = calls.values().stream()
                 .map(call -> new ToolCall(call.id, call.name,
@@ -221,10 +229,31 @@ public class OpenAICompatibleModelClient implements ModelClient {
         return "{}";
     }
 
+    /**
+     * The answer text. Usually a string; some models (for example Mistral's reasoning models) send
+     * a list of parts instead, of which the "text" parts are the answer and "thinking" parts are not.
+     */
+    static String text(Object content) {
+        if (content instanceof String s) return s;
+        if (!(content instanceof JSONArray parts)) return "";
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < parts.length(); i++) {
+            Object part = parts.get(i);
+            if (part instanceof String s) text.append(s);
+            else if (part instanceof JSONObject object && "text".equals(object.optString("type", "text"))) {
+                text.append(object.optString("text", ""));
+            }
+        }
+        return text.toString();
+    }
+
     private void throwIfError(JSONObject body) {
-        JSONObject error = body.optJSONObject("error");
-        if (error != null) {
-            throw new RuntimeException(provider.name() + " error: " + error.optString("message", error.toString()));
+        Object error = body.opt("error");
+        if (error instanceof JSONObject object) {
+            throw new RuntimeException(provider.name() + " error: " + JsonHttp.shorten(object.optString("message", object.toString())));
+        }
+        if (error instanceof String message && !message.isBlank()) {
+            throw new RuntimeException(provider.name() + " error: " + JsonHttp.shorten(message));
         }
     }
 

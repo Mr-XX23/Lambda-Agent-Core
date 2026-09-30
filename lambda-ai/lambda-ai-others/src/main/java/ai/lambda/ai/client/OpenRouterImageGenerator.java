@@ -59,14 +59,23 @@ public final class OpenRouterImageGenerator implements ImageGenerator {
         List<Media> images = new ArrayList<>();
         for (int i = 0; i < request.count(); i++) {
             JSONObject response = http.postJson(URI.create(provider.baseUrl() + "/chat/completions"), body);
-            JSONObject message = response.getJSONArray("choices").getJSONObject(0).getJSONObject("message");
+            JSONObject error = response.optJSONObject("error");
+            if (error != null) {
+                throw new RuntimeException("OpenRouter error: " + JsonHttp.shorten(error.optString("message", error.toString())));
+            }
+            JSONArray choices = response.optJSONArray("choices");
+            JSONObject message = choices == null || choices.isEmpty() ? null : choices.getJSONObject(0).optJSONObject("message");
+            if (message == null) throw new RuntimeException("OpenRouter model '" + model + "' returned no answer");
             JSONArray returned = message.optJSONArray("images");
             if (returned == null || returned.isEmpty()) {
                 throw new RuntimeException("OpenRouter model '" + model + "' returned no image: "
                         + message.optString("content", ""));
             }
             for (int j = 0; j < returned.length(); j++) {
-                images.add(fromUrl(returned.getJSONObject(j).getJSONObject("image_url").getString("url")));
+                JSONObject imageUrl = returned.getJSONObject(j).optJSONObject("image_url");
+                String url = imageUrl == null ? "" : imageUrl.optString("url", "");
+                if (url.isEmpty()) throw new RuntimeException("OpenRouter model '" + model + "' returned an image without a URL");
+                images.add(fromUrl(url));
             }
         }
         return images;

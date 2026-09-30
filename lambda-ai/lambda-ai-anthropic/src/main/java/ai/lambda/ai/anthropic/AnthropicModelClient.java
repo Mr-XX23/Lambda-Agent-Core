@@ -2,12 +2,14 @@ package ai.lambda.ai.anthropic;
 
 import ai.lambda.ai.core.ChatResponse;
 import ai.lambda.ai.core.FinishReason;
+import ai.lambda.ai.core.HttpOptions;
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.Modality;
 import ai.lambda.ai.core.ModelCapabilities;
 import ai.lambda.ai.core.ModelClient;
 import ai.lambda.ai.core.ModelUsage;
+import ai.lambda.ai.core.ProviderClients;
 import ai.lambda.ai.core.ProviderState;
 import ai.lambda.ai.core.Role;
 import ai.lambda.ai.core.ToolCall;
@@ -17,6 +19,7 @@ import com.anthropic.client.AnthropicClient;
 import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.core.ObjectMappers;
+import com.anthropic.core.Timeout;
 import com.anthropic.core.http.StreamResponse;
 import com.anthropic.helpers.BetaMessageAccumulator;
 import com.anthropic.models.beta.messages.BetaBase64ImageSource;
@@ -97,7 +100,32 @@ public final class AnthropicModelClient implements ModelClient {
     }
 
     public AnthropicModelClient(String apiKey, String model) {
-        this(AnthropicOkHttpClient.builder().apiKey(Objects.requireNonNull(apiKey, "apiKey must not be null")).build(), model);
+        this(apiKey, model, HttpOptions.defaults(), null);
+    }
+
+    /**
+     * Applies the connect timeout, the retry count and, as the longest silence allowed while a
+     * reply streams in, the request timeout. Clients with the same key and settings share one SDK
+     * client (see {@link ProviderClients}).
+     *
+     * @param baseUrl another API root, or null for Anthropic's own
+     */
+    public AnthropicModelClient(String apiKey, String model, HttpOptions options, String baseUrl) {
+        this(sdkClient(apiKey, options, baseUrl), model);
+    }
+
+    private static AnthropicClient sdkClient(String apiKey, HttpOptions options, String baseUrl) {
+        if (apiKey == null || apiKey.isBlank()) throw new IllegalArgumentException("Anthropic needs an API key");
+        Objects.requireNonNull(options, "options must not be null");
+        return ProviderClients.shared("anthropic", apiKey, options, baseUrl, () -> {
+            AnthropicOkHttpClient.Builder builder = AnthropicOkHttpClient.builder()
+                    .apiKey(apiKey)
+                    .maxRetries(options.maxAttempts() - 1)
+                    .timeout(Timeout.builder().connect(options.connectTimeout()).read(options.requestTimeout())
+                            .request(options.callTimeout()).build());
+            if (baseUrl != null) builder.baseUrl(baseUrl);
+            return builder.build();
+        });
     }
 
     /** Uses an SDK client you configured (credentials, base URL, timeouts, retries). */
@@ -205,10 +233,34 @@ public final class AnthropicModelClient implements ModelClient {
 
     @Override
     public int countTokens(List<Message> messages) {
-        Converted converted = convert(messages);
+        Converted converted = convert(countable(messages));
         MessageCountTokensParams.Builder params = MessageCountTokensParams.builder().model(model).messages(converted.messages());
         if (converted.system() != null) params.system(converted.system());
         return (int) client.beta().messages().countTokens(params.build()).inputTokens();
+    }
+
+    /**
+     * The counting API takes only a valid conversation: it must start with a user turn, and tool
+     * calls and results must come in pairs. Callers often count part of one (the token-limit
+     * strategy counts message by message), so anything that could not stand alone is counted as
+     * the same text in a single user turn, which gives nearly the same number.
+     */
+    static List<Message> countable(List<Message> messages) {
+        List<Message> system = messages.stream().filter(m -> m.getRole() == Role.SYSTEM).toList();
+        List<Message> rest = messages.stream().filter(m -> m.getRole() != Role.SYSTEM).toList();
+        boolean standsAlone = !rest.isEmpty() && rest.get(0).getRole() == Role.USER
+                && rest.stream().noneMatch(m -> m.getRole() == Role.TOOL || !m.getToolCalls().isEmpty());
+        if (standsAlone) return messages;
+        StringBuilder text = new StringBuilder();
+        for (Message message : rest) {
+            if (!message.getContent().isEmpty()) text.append(message.getContent()).append("\n");
+            for (ToolCall call : message.getToolCalls()) {
+                text.append(call.getName()).append(' ').append(call.getArgumentsJson()).append("\n");
+            }
+        }
+        List<Message> result = new ArrayList<>(system);
+        result.add(new Message(Role.USER, text.isEmpty() ? "." : text.toString(), null));
+        return result;
     }
 
     // --- Request ---
@@ -232,10 +284,14 @@ public final class AnthropicModelClient implements ModelClient {
         // Automatic caching moves a breakpoint to the end of the conversation as it grows.
         if (promptCaching) params.cacheControl(BetaCacheControlEphemeral.builder().build());
         if (tools != null) for (ToolSchema tool : tools) params.addTool(tool(tool));
-        if (dropMismatchedThinking) {
-            params.addBeta(THINKING_BINDING_BETA);
-            params.putAdditionalBodyProperty("thinking", JsonValue.from(Map.of("type", "adaptive",
-                    "block_binding", Map.of("prefix_mismatch_behavior", "drop_block"))));
+        if (supportsAdaptiveThinking(model)) {
+            if (dropMismatchedThinking) {
+                params.addBeta(THINKING_BINDING_BETA);
+                params.putAdditionalBodyProperty("thinking", JsonValue.from(Map.of("type", "adaptive",
+                        "block_binding", Map.of("prefix_mismatch_behavior", "drop_block"))));
+            } else {
+                params.putAdditionalBodyProperty("thinking", JsonValue.from(Map.of("type", "adaptive")));
+            }
         }
         if (refusalFallbacks) {
             params.addBeta(FALLBACK_BETA);
@@ -300,12 +356,25 @@ public final class AnthropicModelClient implements ModelClient {
                     .id(call.getId())
                     .name(call.getName())
                     .input(BetaToolUseBlockParam.Input.builder()
-                            .additionalProperties(toJsonValues(new JSONObject(call.getArgumentsJson()).toMap()))
+                            .additionalProperties(toJsonValues(arguments(call.getArgumentsJson())))
                             .build())
                     .build()));
         }
         if (blocks.isEmpty()) blocks.add(BetaContentBlockParam.ofText("(no reply)"));
         return BetaMessageParam.builder().role(BetaMessageParam.Role.ASSISTANT).contentOfBetaContentBlockParams(blocks).build();
+    }
+
+    /**
+     * A tool call's arguments as a map. Arguments that are not a JSON object (for example cut off
+     * when a reply hit the token limit) become an empty object, so the stored conversation stays
+     * usable instead of failing every later request.
+     */
+    static Map<String, Object> arguments(String json) {
+        try {
+            return new JSONObject(json == null || json.isBlank() ? "{}" : json).toMap();
+        } catch (org.json.JSONException notAnObject) {
+            return Map.of();
+        }
     }
 
     private static Map<String, JsonValue> toJsonValues(Map<String, Object> map) {
@@ -358,9 +427,11 @@ public final class AnthropicModelClient implements ModelClient {
             json.getJSONArray("required").forEach(r -> required.add(r.toString()));
             input.required(required);
         }
-        for (String key : json.keySet()) {
+        Map<String, Object> all = json.toMap();
+        for (Map.Entry<String, Object> entry : all.entrySet()) {
+            String key = entry.getKey();
             if (!key.equals("type") && !key.equals("properties") && !key.equals("required")) {
-                input.putAdditionalProperty(key, JsonValue.from(json.toMap().get(key)));
+                input.putAdditionalProperty(key, JsonValue.from(entry.getValue()));
             }
         }
         return BetaTool.builder().name(schema.getName()).description(schema.getDescription()).inputSchema(input.build()).build();
@@ -377,7 +448,8 @@ public final class AnthropicModelClient implements ModelClient {
         }
         BetaStopReason stop = message.stopReason().orElse(null);
         FinishReason reason;
-        if (!calls.isEmpty()) reason = FinishReason.TOOL_CALLS;
+        boolean hitLimit = BetaStopReason.MAX_TOKENS.equals(stop) || BetaStopReason.MODEL_CONTEXT_WINDOW_EXCEEDED.equals(stop);
+        if (!calls.isEmpty() && !hitLimit) reason = FinishReason.TOOL_CALLS;
         else if (BetaStopReason.END_TURN.equals(stop) || BetaStopReason.STOP_SEQUENCE.equals(stop)) reason = FinishReason.STOP;
         else if (BetaStopReason.MAX_TOKENS.equals(stop) || BetaStopReason.MODEL_CONTEXT_WINDOW_EXCEEDED.equals(stop)) reason = FinishReason.LENGTH;
         else if (BetaStopReason.REFUSAL.equals(stop)) reason = FinishReason.CONTENT_FILTER;
@@ -390,10 +462,16 @@ public final class AnthropicModelClient implements ModelClient {
             text.append("[Claude declined this request").append(details).append("]");
         }
 
-        Message assistant = new Message(Role.ASSISTANT, text.toString(), null, null, calls)
-                .withProviderState(new ProviderState(PROVIDER, json(message.toParam())));
-        ModelUsage usage = new ModelUsage(message.usage().inputTokens(), message.usage().outputTokens(),
-                message.usage().inputTokens() + message.usage().outputTokens());
+        Message assistant = new Message(Role.ASSISTANT, text.toString(), null, null, calls);
+        // Claude's own turn is replayed as-is (thinking blocks and signatures included), except an
+        // empty one, which the API would reject on every later request; that one is rebuilt from the text.
+        if (!message.content().isEmpty()) {
+            assistant = assistant.withProviderState(new ProviderState(PROVIDER, json(message.toParam())));
+        }
+        // Cached input counts too: with prompt caching on, most of the input is read from cache.
+        long input = message.usage().inputTokens() + message.usage().cacheReadInputTokens().orElse(0L)
+                + message.usage().cacheCreationInputTokens().orElse(0L);
+        ModelUsage usage = new ModelUsage(input, message.usage().outputTokens(), input + message.usage().outputTokens());
         return new ChatResponse(assistant, calls, reason, usage);
     }
 

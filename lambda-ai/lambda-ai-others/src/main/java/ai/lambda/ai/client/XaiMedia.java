@@ -137,7 +137,12 @@ public final class XaiMedia {
                 JSONObject status = http.getJson(URI.create(baseUrl + "/videos/" + id));
                 String state = status.optString("status", "");
                 if (state.equals("done")) {
-                    JsonHttp.Binary video = http.download(URI.create(status.getJSONObject("video").getString("url")));
+                    JSONObject result = status.optJSONObject("video");
+                    String url = result == null ? "" : result.optString("url", "");
+                    if (url.isEmpty()) {
+                        throw new RuntimeException("xAI video " + id + " finished without a video (it may have been moderated)");
+                    }
+                    JsonHttp.Binary video = http.download(URI.create(url));
                     return Media.of(video.data(), video.contentType().startsWith("video/") ? video.contentType() : "video/mp4");
                 }
                 if (FAILED.contains(state)) throw new RuntimeException("xAI video " + state + ": " + status);

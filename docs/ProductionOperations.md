@@ -47,6 +47,30 @@ timeouts, and bounded output. These are application-level limits, not OS isolati
 For hostile workloads, run tools in a separate container or service with OS-level CPU,
 memory, filesystem, syscall, and egress restrictions.
 
+## Timeouts, retries and downloads
+
+`HttpOptions` sets these for every provider (`new XxxModelClient(key, model, options, baseUrl)`):
+
+- **Connect timeout** (10 s): the longest wait to open a connection.
+- **Request timeout** (10 minutes): the longest wait for the model to start answering or, while an
+  answer streams in, to send more of it. Reasoning models can think for minutes before the first
+  word, so keep it generous. A stream that goes quiet for longer is abandoned with the error
+  *"... stopped sending data"* instead of hanging the agent.
+- **Call timeout** (`HttpOptions.MAX_CALL`, 1 hour, or the request timeout if longer): the limit
+  for one whole call, so long streamed answers are not cut off early but nothing runs forever.
+- **Retries** (3 attempts): on 429 and 5xx answers and on connection failures, waiting
+  `initialBackoff` and doubling, at most 30 s between attempts; a `Retry-After` longer than the
+  request timeout returns the answer instead of waiting. A request that reached the provider but
+  timed out is **not** sent again, so a slow image or video generation is not billed twice.
+
+Files a provider points to (generated images and videos given as URLs) are downloaded by
+`Downloads`: without the API key (the URL is often a storage or CDN host), over https only, and at
+most 512 MB. Error messages name the host, not the full URL, which is often signed.
+
+SDK clients are shared: model clients and generators with the same provider, key and settings use
+one SDK client and so one connection pool (`ProviderClients`, at most 64). Creating clients per
+request or per subagent is cheap and keeps connections warm.
+
 ## Performance
 
 What the framework does for you:

@@ -244,7 +244,8 @@ class AnthropicModelClientTest {
 
         JSONObject body = requests.get(0).json();
         assertFalse(body.has("fallbacks"));
-        assertFalse(body.has("thinking"));
+        assertEquals("adaptive", body.getJSONObject("thinking").getString("type"), "thinking stays on");
+        assertFalse(body.getJSONObject("thinking").has("block_binding"), "only the drop behaviour is off");
         assertEquals("high", body.getJSONObject("output_config").getString("effort"));
     }
 
@@ -285,5 +286,71 @@ class AnthropicModelClientTest {
 
         assertEquals(123, client("claude-opus-5-5").countTokens(List.of(new Message(Role.USER, "hello", null))));
         assertEquals("/v1/messages/count_tokens", requests.get(0).path());
+    }
+
+    @Test
+    void anEmptyRefusedTurnIsNotReplayedAsEmpty() {
+        reply = r -> """
+                {"id":"msg_9","type":"message","role":"assistant","model":"claude-opus-5-5","content":[],
+                 "stop_reason":"refusal","stop_sequence":null,"usage":{"input_tokens":5,"output_tokens":0}}
+                """;
+        AnthropicModelClient claude = client("claude-opus-5-5");
+        ChatResponse refused = claude.chat(List.of(new Message(Role.USER, "something", null)), List.of());
+
+        assertNull(refused.getAssistantMessage().getProviderState(), "an empty turn is not stored for exact replay");
+        claude.chat(List.of(new Message(Role.USER, "something", null), refused.getAssistantMessage(),
+                new Message(Role.USER, "something else", null)), List.of());
+        JSONArray replayed = requests.get(1).json().getJSONArray("messages").getJSONObject(1).getJSONArray("content");
+        assertFalse(replayed.isEmpty(), "the next request carries the turn as text, not as empty content");
+    }
+
+    @Test
+    void usageCountsCachedInputAndCutOffToolCallsAreReported() {
+        reply = r -> """
+                {"id":"msg_2","type":"message","role":"assistant","model":"claude-opus-5-5",
+                 "content":[{"type":"tool_use","id":"toolu_1","name":"echo","input":{}}],
+                 "stop_reason":"max_tokens","stop_sequence":null,
+                 "usage":{"input_tokens":10,"output_tokens":7,"cache_read_input_tokens":900,"cache_creation_input_tokens":90}}
+                """;
+        ChatResponse response = client("claude-opus-5-5").chat(List.of(new Message(Role.USER, "hi", null)), List.of(ECHO));
+
+        assertEquals(1000, response.getUsage().inputTokens(), "input read from cache counts too");
+        assertEquals(1007, response.getUsage().totalTokens());
+        assertEquals(ai.lambda.ai.core.FinishReason.LENGTH, response.getFinishReason(), "the call may be cut off");
+    }
+
+    @Test
+    void storedCallsWithBrokenArgumentsDoNotBreakLaterRequests() {
+        reply = r -> TOOL_REPLY;
+        List<Message> history = List.of(new Message(Role.USER, "hi", null),
+                new Message(Role.ASSISTANT, "", null, null, List.of(new ToolCall("toolu_x", "echo", "{\"text\":\"cut of"))),
+                new Message(Role.TOOL, "failed", "toolu_x", "echo", null));
+
+        assertDoesNotThrow(() -> client("claude-opus-5-5").chat(history, List.of(ECHO)));
+        assertEquals(Map.of(), AnthropicModelClient.arguments("{\"text\":\"cut of"));
+        assertEquals(Map.of("a", 1), AnthropicModelClient.arguments("{\"a\":1}"));
+        assertEquals(Map.of(), AnthropicModelClient.arguments(null));
+    }
+
+    @Test
+    void partsOfAConversationAreCountedAsAValidRequest() {
+        reply = r -> "{\"input_tokens\":42}";
+        AnthropicModelClient claude = client("claude-opus-5-5");
+        Message system = new Message(Role.SYSTEM, "be brief", null);
+        Message toolCall = new Message(Role.ASSISTANT, "", null, null, List.of(new ToolCall("t1", "echo", "{\"text\":\"a\"}")));
+        Message toolResult = new Message(Role.TOOL, "a", "t1", "echo", null);
+
+        for (List<Message> part : List.of(List.of(system), List.of(toolCall), List.of(toolResult))) {
+            assertEquals(42, claude.countTokens(part));
+        }
+        for (Request request : requests) {
+            JSONArray messages = request.json().getJSONArray("messages");
+            assertEquals(1, messages.length(), request.body());
+            assertEquals("user", messages.getJSONObject(0).getString("role"), "the counted request starts with a user turn");
+        }
+        assertTrue(requests.get(1).body().contains("echo") && requests.get(1).body().contains("text"), "the call's text is counted");
+
+        List<Message> valid = List.of(system, new Message(Role.USER, "hi", null));
+        assertSame(valid, AnthropicModelClient.countable(valid), "a request that stands alone is counted exactly as it is");
     }
 }

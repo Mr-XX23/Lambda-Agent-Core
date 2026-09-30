@@ -204,6 +204,19 @@ class OpenAIModelClientTest {
     }
 
     @Test
+    void callsCutOffAtTheLengthLimitAreReportedAsCutOff() throws Exception {
+        try (var server = new LocalServer(r -> LocalServer.Reply.sse(
+                chunk("{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"a\"}}]},\"finish_reason\":null}"),
+                chunk("{\"index\":0,\"delta\":{},\"finish_reason\":\"length\"}"),
+                "[DONE]"))) {
+            ChatResponse response = client(server, "gpt-5").streamChat(List.of(new Message(Role.USER, "hi", null)), List.of(), null);
+
+            assertEquals(FinishReason.LENGTH, response.getFinishReason());
+            assertEquals(1, response.getToolCalls().size());
+        }
+    }
+
+    @Test
     void apiErrorsAreRaisedWithOpenAIsMessage() throws Exception {
         String error = "{\"error\":{\"message\":\"Incorrect API key provided\",\"type\":\"invalid_request_error\",\"code\":\"invalid_api_key\"}}";
         try (var server = new LocalServer(r -> new LocalServer.Reply(401, "application/json", error.getBytes(StandardCharsets.UTF_8)))) {
@@ -228,6 +241,18 @@ class OpenAIModelClientTest {
 
             assertEquals("ok", response.getAssistantMessage().getContent());
             assertEquals(2, calls.get());
+        }
+    }
+
+    @Test
+    void clientsWithTheSameSettingsShareOneWarmConnection() throws Exception {
+        try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
+            new OpenAIModelClient("k", "gpt-5", FAST, server.url() + "/v1").chat(List.of(new Message(Role.USER, "one", null)), List.of());
+            new OpenAIModelClient("k", "gpt-5-mini", FAST, server.url() + "/v1").chat(List.of(new Message(Role.USER, "two", null)), List.of());
+            new OpenAIImageGenerator("k", "gpt-image-2", FAST, server.url() + "/v1"); // shares it too
+
+            List<Integer> ports = server.requests.stream().map(LocalServer.Request::clientPort).distinct().toList();
+            assertEquals(1, ports.size(), "both requests used one TCP connection: " + ports);
         }
     }
 

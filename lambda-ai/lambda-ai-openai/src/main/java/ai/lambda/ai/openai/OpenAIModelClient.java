@@ -164,8 +164,9 @@ public final class OpenAIModelClient implements ModelClient {
         List<ToolCall> toolCalls = calls.values().stream()
                 .map(call -> new ToolCall(call.id, call.name, arguments(call.arguments.toString())))
                 .toList();
-        return new ChatResponse(new Message(Role.ASSISTANT, text.toString(), null, null, toolCalls), toolCalls,
-                toolCalls.isEmpty() ? finish : FinishReason.TOOL_CALLS, usage);
+        // Calls made while the answer hit the length limit may be cut off, so LENGTH is kept.
+        FinishReason reason = toolCalls.isEmpty() || finish == FinishReason.LENGTH ? finish : FinishReason.TOOL_CALLS;
+        return new ChatResponse(new Message(Role.ASSISTANT, text.toString(), null, null, toolCalls), toolCalls, reason, usage);
     }
 
     private static final class PartialCall {

@@ -12,6 +12,7 @@ import com.google.genai.Client;
 import com.google.genai.types.Blob;
 import com.google.genai.types.Candidate;
 import com.google.genai.types.Content;
+import com.google.genai.types.DownloadFileConfig;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateVideosConfig;
@@ -39,6 +40,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -56,6 +58,9 @@ import java.util.regex.Pattern;
  * A request's {@code options} are sent as extra top-level fields of the API request.
  */
 public final class GeminiMedia {
+
+    /** The limit for each call; the SDK has no other timeout. */
+    private static final Duration TIMEOUT = HttpOptions.defaults().requestTimeout();
 
     private GeminiMedia() {
     }
@@ -172,8 +177,7 @@ public final class GeminiMedia {
                 else throw new IllegalArgumentException("Gemini image size must be an aspect ratio like 16:9 or 512, 1K, 2K or 4K");
                 config.imageConfig(image.build());
             }
-            com.google.genai.types.HttpOptions extra = GeminiClients.extraBody(request.options());
-            if (extra != null) config.httpOptions(extra);
+            config.httpOptions(GeminiClients.requestOptions(TIMEOUT, request.options()));
 
             List<Media> images = new ArrayList<>();
             for (int i = 0; i < request.count(); i++) {
@@ -202,8 +206,7 @@ public final class GeminiMedia {
                     .speechConfig(SpeechConfig.builder().voiceConfig(VoiceConfig.builder().prebuiltVoiceConfig(
                             PrebuiltVoiceConfig.builder().voiceName(request.voice() != null ? request.voice() : "Kore").build())
                             .build()).build());
-            com.google.genai.types.HttpOptions extra = GeminiClients.extraBody(request.options());
-            if (extra != null) config.httpOptions(extra);
+            config.httpOptions(GeminiClients.requestOptions(TIMEOUT, request.options()));
             return generateMedia(client, model, List.of(Part.builder().text(text).build()), config.build()).get(0);
         }
     }
@@ -235,8 +238,7 @@ public final class GeminiMedia {
                 else if (RESOLUTION.matcher(request.size()).matches()) config.resolution(request.size().toLowerCase(Locale.ROOT));
                 else throw new IllegalArgumentException("Veo size must be an aspect ratio like 16:9 or a resolution like 720p");
             }
-            com.google.genai.types.HttpOptions extra = GeminiClients.extraBody(request.options());
-            if (extra != null) config.httpOptions(extra);
+            config.httpOptions(GeminiClients.requestOptions(TIMEOUT, request.options()));
 
             GenerateVideosOperation operation = client.models.generateVideos(model, source.build(), config.build());
             Instant deadline = Instant.now().plus(request.timeout());
@@ -246,7 +248,8 @@ public final class GeminiMedia {
                             + " (operation " + operation.name().orElse("?") + ")");
                 }
                 sleep(request.pollInterval());
-                operation = client.operations.getVideosOperation(operation, GetOperationConfig.builder().build());
+                operation = client.operations.getVideosOperation(operation,
+                        GetOperationConfig.builder().httpOptions(GeminiClients.requestOptions(TIMEOUT, Map.of())).build());
             }
             if (operation.error().isPresent()) {
                 Object message = operation.error().get().get("message");
@@ -264,7 +267,8 @@ public final class GeminiMedia {
             try {
                 Path file = Files.createTempFile("veo-", ".mp4");
                 try {
-                    client.files.download(video, file.toString(), null);
+                    client.files.download(video, file.toString(), DownloadFileConfig.builder()
+                            .httpOptions(GeminiClients.requestOptions(HttpOptions.defaults().callTimeout(), Map.of())).build());
                     return Files.readAllBytes(file);
                 } finally {
                     Files.deleteIfExists(file);

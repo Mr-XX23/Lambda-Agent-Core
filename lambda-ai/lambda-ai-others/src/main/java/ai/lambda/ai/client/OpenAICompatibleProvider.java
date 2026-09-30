@@ -142,6 +142,13 @@ public record OpenAICompatibleProvider(String name, String baseUrl, boolean requ
                 model -> ModelCapabilities.of(Modality.IMAGE).withMediaUrls(Modality.IMAGE), true, Map.of());
     }
 
+    /** Header values are left out: they often hold keys (for example a gateway's {@code api-key}). */
+    @Override
+    public String toString() {
+        return "OpenAICompatibleProvider[name=" + name + ", baseUrl=" + baseUrl + ", dialect=" + dialect
+                + ", headers=" + headers.keySet() + "]";
+    }
+
     /** A copy with a different API root, for example a proxy or a self-hosted instance. */
     public OpenAICompatibleProvider withBaseUrl(String baseUrl) {
         return new OpenAICompatibleProvider(name, baseUrl, requiresApiKey, dialect, capabilities, streamUsage, headers);

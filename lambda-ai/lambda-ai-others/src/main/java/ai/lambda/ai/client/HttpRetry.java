@@ -4,7 +4,9 @@ import ai.lambda.ai.core.HttpOptions;
 import java.io.IOException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
@@ -15,6 +17,8 @@ import java.util.Set;
 final class HttpRetry {
 
     private static final Set<Integer> RETRYABLE_STATUS = Set.of(429, 500, 502, 503, 504);
+    /** The longest wait between two attempts. */
+    static final Duration MAX_BACKOFF = Duration.ofSeconds(30);
 
     private HttpRetry() {
     }
@@ -43,6 +47,16 @@ final class HttpRetry {
                 delay = backoff(options, attempt, response.headers().firstValue("Retry-After"));
                 // A provider asking for a very long wait: hand the response back instead of blocking the caller.
                 if (delay.compareTo(options.requestTimeout()) > 0) return response;
+            } catch (HttpTimeoutException e) {
+                // The request reached the provider but no answer came in time. Sending it again could
+                // do (and bill) the work twice, for example generate an image twice, so give up.
+                // A connect timeout is different: nothing was sent, so it is safe to try again.
+                if (lastAttempt || !(e instanceof HttpConnectTimeoutException)) {
+                    throw new RuntimeException(provider + " did not answer within "
+                            + (e instanceof HttpConnectTimeoutException ? options.connectTimeout() + " (could not connect)"
+                            : options.requestTimeout()), e);
+                }
+                delay = backoff(options, attempt, Optional.empty());
             } catch (IOException e) {
                 if (lastAttempt) {
                     throw new RuntimeException("Failed to call " + provider + " after " + attempt + " attempt(s)", e);
@@ -62,7 +76,7 @@ final class HttpRetry {
         }
     }
 
-    private static Duration backoff(HttpOptions options, int attempt, Optional<String> retryAfter) {
+    static Duration backoff(HttpOptions options, int attempt, Optional<String> retryAfter) {
         if (retryAfter.isPresent()) {
             try {
                 return Duration.ofSeconds(Math.max(0, Long.parseLong(retryAfter.get().trim())));
@@ -70,6 +84,8 @@ final class HttpRetry {
                 // Retry-After can also be an HTTP date; fall back to exponential backoff.
             }
         }
-        return options.initialBackoff().multipliedBy(1L << (attempt - 1));
+        // Doubles each time, but never beyond MAX_BACKOFF (and the shift cannot overflow).
+        Duration delay = options.initialBackoff().multipliedBy(1L << Math.min(attempt - 1, 20));
+        return delay.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : delay;
     }
 }

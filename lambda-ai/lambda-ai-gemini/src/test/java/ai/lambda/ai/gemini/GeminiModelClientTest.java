@@ -29,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -332,5 +333,74 @@ class GeminiModelClientTest {
         assertTrue(Models.names().contains("gemini"), Models.names().toString());
         GeminiModelClient created = assertInstanceOf(GeminiModelClient.class, Models.create("google:gemini-3.8-pro", "k"));
         assertEquals("gemini-3.8-pro", created.model());
+    }
+
+    @Test
+    void aStreamThatStallsIsAbandonedWithAClearError() {
+        server.createContext("/", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            OutputStream out = exchange.getResponseBody();
+            out.write(sse(TEXT).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            try {
+                Thread.sleep(10_000); // then silence, with the connection still open
+            } catch (InterruptedException ignored) {
+                // server stopping
+            } finally {
+                exchange.close(); // never leave the client waiting, even if the test fails
+            }
+        });
+        HttpOptions quick = new HttpOptions(Duration.ofSeconds(2), Duration.ofMillis(400), 1, Duration.ofMillis(1));
+        long start = System.nanoTime();
+
+        RuntimeException e = assertThrows(RuntimeException.class, () -> client(quick).streamChat(userSays("hi"), List.of(), null));
+
+        assertTrue(e.getMessage().contains("stopped sending data"), e.getMessage());
+        assertTrue(Duration.ofNanos(System.nanoTime() - start).toMillis() < 5_000, "gave up at the idle limit");
+    }
+
+    @Test
+    void geminisOwnCallIdsAreSentBackAndMadeUpOnesAreNot() {
+        serve(n -> Reply.ok(TEXT_STREAM));
+        List<Message> history = List.of(
+                new Message(Role.USER, "twice", null),
+                new Message(Role.ASSISTANT, "", null, null, List.of(
+                        new ToolCall("call-a", "lookup", "{}"),
+                        new ToolCall(GeminiClients.GENERATED_ID + "123", "lookup", "{}"),
+                        new ToolCall("4f0c1a2b-3c4d-4e5f-8a9b-0c1d2e3f4a5b", "lookup", "{}"))),
+                new Message(Role.TOOL, "a", "call-a", "lookup", null),
+                new Message(Role.TOOL, "b", GeminiClients.GENERATED_ID + "123", "lookup", null));
+
+        client(FAST).streamChat(history, List.of(), null);
+
+        JSONArray contents = requests.get(0).json().getJSONArray("contents");
+        JSONArray calls = contents.getJSONObject(1).getJSONArray("parts");
+        assertEquals("call-a", calls.getJSONObject(0).getJSONObject("functionCall").getString("id"));
+        assertFalse(calls.getJSONObject(1).getJSONObject("functionCall").has("id"), "a made-up id is not sent");
+        assertFalse(calls.getJSONObject(2).getJSONObject("functionCall").has("id"), "nor one from an older version");
+        JSONArray results = contents.getJSONObject(2).getJSONArray("parts");
+        assertEquals("call-a", results.getJSONObject(0).getJSONObject("functionResponse").getString("id"));
+        assertFalse(results.getJSONObject(1).getJSONObject("functionResponse").has("id"));
+    }
+
+    @Test
+    void cutOffCallsAreReportedAndBrokenArgumentsDoNotBreakLaterRequests() {
+        serve(n -> n == 1
+                ? Reply.ok("{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"functionCall\":{\"name\":\"write\",\"args\":{}}}]},"
+                        + "\"finishReason\":\"MAX_TOKENS\"}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":3,"
+                        + "\"thoughtsTokenCount\":40,\"totalTokenCount\":48}}")
+                : Reply.ok(TEXT_STREAM));
+
+        ChatResponse response = client(FAST).chat(userSays("go"), List.of());
+        assertEquals(FinishReason.LENGTH, response.getFinishReason(), "the call may be cut off");
+        assertEquals(new ModelUsage(5, 43, 48), response.getUsage(), "thinking counts as output");
+
+        List<Message> history = List.of(new Message(Role.USER, "go", null),
+                new Message(Role.ASSISTANT, "", null, null, List.of(new ToolCall("x", "write", "{\"path\":\"a"))),
+                new Message(Role.TOOL, "failed", "x", "write", null));
+        assertDoesNotThrow(() -> client(FAST).streamChat(history, List.of(), null));
+        assertEquals(Map.of(), GeminiModelClient.arguments("{\"path\":\"a"));
     }
 }

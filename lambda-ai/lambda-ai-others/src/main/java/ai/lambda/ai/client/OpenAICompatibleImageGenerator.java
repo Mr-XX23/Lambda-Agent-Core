@@ -72,7 +72,7 @@ public final class OpenAICompatibleImageGenerator implements ImageGenerator {
             String type = item.optString("mime_type", "image/" + (format.equals("jpg") ? "jpeg" : format));
             if (item.has("b64_json") && !item.isNull("b64_json")) {
                 images.add(Media.fromBase64(item.getString("b64_json"), type));
-            } else if (item.has("url")) {
+            } else if (item.has("url") && !item.isNull("url")) {
                 // Some models return short-lived URLs instead; fetch the bytes now.
                 JsonHttp.Binary image = http.download(URI.create(item.getString("url")));
                 images.add(Media.of(image.data(), image.contentType().startsWith("image/") ? image.contentType() : type));

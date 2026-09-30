@@ -1,5 +1,6 @@
 package ai.lambda.ai.client;
 
+import ai.lambda.ai.core.StreamWatchdog;
 import ai.lambda.ai.core.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -103,28 +104,35 @@ public final class ResponsesModelClient implements ModelClient {
 
         StringBuilder streamed = new StringBuilder();
         JSONObject completed = null;
-        try (Stream<String> lines = response.body()) {
+        try (Stream<String> lines = response.body();
+             StreamWatchdog watchdog = new StreamWatchdog(providerName, options.requestTimeout(), lines::close)) {
             if (response.statusCode() >= 400) {
                 throw new RuntimeException(providerName + " streaming error: " + response.statusCode() + " "
-                        + lines.collect(Collectors.joining("\n")));
+                        + JsonHttp.shorten(lines.collect(Collectors.joining("\n"))));
             }
-            for (String line : (Iterable<String>) lines::iterator) {
-                if (!line.startsWith("data:")) continue; // "event:" lines repeat the type found in the data
-                String data = line.substring(5).trim();
-                if (data.isEmpty() || data.equals("[DONE]")) continue;
-                JSONObject event = new JSONObject(data);
-                switch (event.optString("type")) {
-                    case "response.output_text.delta" -> {
-                        String delta = event.optString("delta", "");
-                        streamed.append(delta);
-                        if (onDelta != null && !delta.isEmpty()) onDelta.accept(delta);
-                    }
-                    case "response.completed", "response.incomplete" -> completed = event.getJSONObject("response");
-                    case "response.failed", "error" -> throw new RuntimeException(providerName + " error: " + errorMessage(event));
-                    default -> {
+            try {
+                for (String line : (Iterable<String>) lines::iterator) {
+                    watchdog.activity(); // keep-alive comments count too: the provider is still there
+                    if (!line.startsWith("data:")) continue; // "event:" lines repeat the type found in the data
+                    String data = line.substring(5).trim();
+                    if (data.isEmpty() || data.equals("[DONE]")) continue;
+                    JSONObject event = new JSONObject(data);
+                    switch (event.optString("type")) {
+                        case "response.output_text.delta" -> {
+                            String delta = event.optString("delta", "");
+                            streamed.append(delta);
+                            if (onDelta != null && !delta.isEmpty()) onDelta.accept(delta);
+                        }
+                        case "response.completed", "response.incomplete" -> completed = event.getJSONObject("response");
+                        case "response.failed", "error" -> throw new RuntimeException(providerName + " error: " + errorMessage(event));
+                        default -> {
+                        }
                     }
                 }
+            } catch (RuntimeException failure) {
+                throw watchdog.explain(failure);
             }
+            watchdog.check();
         }
         if (completed == null) throw new RuntimeException(providerName + " stream ended without a final response");
         return toChatResponse(completed, streamed.toString());

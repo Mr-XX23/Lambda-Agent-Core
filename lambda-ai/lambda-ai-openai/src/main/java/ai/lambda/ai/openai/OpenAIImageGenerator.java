@@ -1,6 +1,7 @@
 package ai.lambda.ai.openai;
 
 import ai.lambda.ai.core.HttpOptions;
+import ai.lambda.ai.core.Downloads;
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.generation.ImageGenerator;
 import ai.lambda.ai.generation.ImageRequest;
@@ -10,11 +11,7 @@ import com.openai.models.images.ImageEditParams;
 import com.openai.models.images.ImageGenerateParams;
 import com.openai.models.images.ImagesResponse;
 
-import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,6 +30,7 @@ public final class OpenAIImageGenerator implements ImageGenerator {
 
     private final OpenAIClient client;
     private final String model;
+    private final HttpOptions options;
 
     public OpenAIImageGenerator(String apiKey, String model) {
         this(apiKey, model, HttpOptions.defaults(), null);
@@ -40,12 +38,17 @@ public final class OpenAIImageGenerator implements ImageGenerator {
 
     /** @param baseUrl another API root, or null for OpenAI's own */
     public OpenAIImageGenerator(String apiKey, String model, HttpOptions options, String baseUrl) {
-        this(OpenAIClients.create(apiKey, options, baseUrl), model);
+        this(OpenAIClients.create(apiKey, options, baseUrl), model, options);
     }
 
     public OpenAIImageGenerator(OpenAIClient client, String model) {
+        this(client, model, HttpOptions.defaults());
+    }
+
+    private OpenAIImageGenerator(OpenAIClient client, String model, HttpOptions options) {
         this.client = Objects.requireNonNull(client, "client must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
+        this.options = Objects.requireNonNull(options, "options must not be null");
     }
 
     /**
@@ -93,19 +96,8 @@ public final class OpenAIImageGenerator implements ImageGenerator {
         return client.images().edit(params.build());
     }
 
-    private static Media download(String url, String fallbackType) {
-        try (HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build()) {
-            HttpResponse<byte[]> response = http.send(HttpRequest.newBuilder(URI.create(url)).build(),
-                    HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() >= 400) throw new RuntimeException("Could not download the image: " + response.statusCode());
-            String type = response.headers().firstValue("Content-Type").filter(t -> t.startsWith("image/"))
-                    .map(t -> t.split(";")[0].trim()).orElse(fallbackType);
-            return Media.of(response.body(), type);
-        } catch (IOException e) {
-            throw new RuntimeException("Could not download the image from " + url, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while downloading the image", e);
-        }
+    private Media download(String url, String fallbackType) {
+        Downloads.File file = Downloads.fetch("OpenAI", URI.create(url), options);
+        return Media.of(file.data(), file.contentType().startsWith("image/") ? file.contentType() : fallbackType);
     }
 }

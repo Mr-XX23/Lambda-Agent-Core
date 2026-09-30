@@ -1,6 +1,7 @@
 package ai.lambda.ai.openai;
 
 import ai.lambda.ai.core.HttpOptions;
+import ai.lambda.ai.core.ProviderClients;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
@@ -23,16 +24,24 @@ final class OpenAIClients {
     }
 
     /**
+     * The shared SDK client for these settings (see {@link ProviderClients}).
+     *
      * @param baseUrl another API root, or null for OpenAI's own
      */
     static OpenAIClient create(String apiKey, HttpOptions options, String baseUrl) {
         if (apiKey == null || apiKey.isBlank()) throw new IllegalArgumentException("OpenAI needs an API key");
         Objects.requireNonNull(options, "options must not be null");
+        return ProviderClients.shared("openai", apiKey, options, baseUrl, () -> build(apiKey, options, baseUrl));
+    }
+
+    private static OpenAIClient build(String apiKey, HttpOptions options, String baseUrl) {
         OpenAIOkHttpClient.Builder builder = OpenAIOkHttpClient.builder()
                 .apiKey(apiKey)
                 .maxRetries(options.maxAttempts() - 1)
-                // "read" bounds the wait for the next bytes, so long streamed answers are not cut off.
-                .timeout(Timeout.builder().connect(options.connectTimeout()).read(options.requestTimeout()).build());
+                // "read" bounds each wait for more bytes; "request" the whole call. The SDK's own
+                // limit for a whole call is 10 minutes, which would cut long streamed answers off.
+                .timeout(Timeout.builder().connect(options.connectTimeout()).read(options.requestTimeout())
+                        .request(options.callTimeout()).build());
         if (baseUrl != null) builder.baseUrl(baseUrl);
         return builder.build();
     }

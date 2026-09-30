@@ -1,5 +1,6 @@
 package ai.lambda.ai.client;
 
+import ai.lambda.ai.core.Downloads;
 import ai.lambda.ai.core.HttpOptions;
 import ai.lambda.ai.core.Media;
 import org.json.JSONObject;
@@ -21,6 +22,9 @@ import java.util.UUID;
  * include the provider's message.
  */
 final class JsonHttp {
+
+    /** How much of an error body goes into an exception message. */
+    private static final int MAX_ERROR_CHARS = 2_000;
 
     /** A binary response and its content type. */
     record Binary(byte[] data, String contentType) {
@@ -68,31 +72,48 @@ final class JsonHttp {
         return binary(send(request, HttpResponse.BodyHandlers.ofByteArray()));
     }
 
+    /** Downloads a file the provider pointed to, safely (see {@link Downloads}). */
     Binary download(URI uri) {
-        return binary(send(request(uri).GET().build(), HttpResponse.BodyHandlers.ofByteArray()));
+        return download(uri, Downloads.MAX_BYTES);
+    }
+
+    // The limit is a parameter so tests can use a small one.
+    Binary download(URI uri, long maxBytes) {
+        Downloads.File file = Downloads.fetch(provider, uri, options, maxBytes);
+        return new Binary(file.data(), file.contentType());
+    }
+
+    static void requireSafeDownload(URI uri) {
+        Downloads.requireSafe(uri);
+    }
+
+    /** Keeps error text short enough for an exception message and a log line. */
+    static String shorten(String text) {
+        if (text == null || text.length() <= MAX_ERROR_CHARS) return text;
+        return text.substring(0, MAX_ERROR_CHARS) + "... (" + (text.length() - MAX_ERROR_CHARS) + " more characters)";
     }
 
     /** Sends {@code multipart/form-data} with text fields and one file. */
     JSONObject postMultipart(URI uri, Map<String, String> fields, String fileField, Media file) {
         String boundary = "lambda-" + UUID.randomUUID();
-        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        StringBuilder head = new StringBuilder();
         for (Map.Entry<String, String> field : fields.entrySet()) {
-            write(body, "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + field.getKey()
-                    + "\"\r\n\r\n" + field.getValue() + "\r\n");
+            head.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"").append(field.getKey())
+                    .append("\"\r\n\r\n").append(field.getValue()).append("\r\n");
         }
         String fileName = file.name() != null ? file.name() : "file." + file.fileExtension();
-        write(body, "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + fileField
-                + "\"; filename=\"" + fileName.replace("\"", "") + "\"\r\nContent-Type: " + file.mimeType() + "\r\n\r\n");
-        body.writeBytes(file.data());
-        write(body, "\r\n--" + boundary + "--\r\n");
+        head.append("--").append(boundary).append("\r\nContent-Disposition: form-data; name=\"").append(fileField)
+                .append("\"; filename=\"").append(fileName.replace("\"", "")).append("\"\r\nContent-Type: ")
+                .append(file.mimeType()).append("\r\n\r\n");
 
+        // Sent in three parts, so the file is not copied into one more large array.
         HttpRequest request = request(uri).header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build();
+                .POST(HttpRequest.BodyPublishers.concat(
+                        HttpRequest.BodyPublishers.ofString(head.toString(), StandardCharsets.UTF_8),
+                        HttpRequest.BodyPublishers.ofByteArray(file.data()),
+                        HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8)))
+                .build();
         return new JSONObject(check(send(request, HttpResponse.BodyHandlers.ofString())).body());
-    }
-
-    private static void write(ByteArrayOutputStream out, String text) {
-        out.writeBytes(text.getBytes(StandardCharsets.UTF_8));
     }
 
     private <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler) {
@@ -101,7 +122,7 @@ final class JsonHttp {
 
     private HttpResponse<String> check(HttpResponse<String> response) {
         if (response.statusCode() >= 400) {
-            throw new RuntimeException(provider + " error: " + response.statusCode() + " " + response.body());
+            throw new RuntimeException(provider + " error: " + response.statusCode() + " " + shorten(response.body()));
         }
         return response;
     }
@@ -109,7 +130,7 @@ final class JsonHttp {
     private Binary binary(HttpResponse<byte[]> response) {
         if (response.statusCode() >= 400) {
             throw new RuntimeException(provider + " error: " + response.statusCode() + " "
-                    + new String(response.body(), StandardCharsets.UTF_8));
+                    + shorten(new String(response.body(), StandardCharsets.UTF_8)));
         }
         String type = response.headers().firstValue("Content-Type").orElse("application/octet-stream");
         return new Binary(response.body(), type.split(";")[0].trim().toLowerCase(java.util.Locale.ROOT));
