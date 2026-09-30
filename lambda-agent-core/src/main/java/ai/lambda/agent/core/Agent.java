@@ -273,6 +273,11 @@ public final class Agent {
             List<Object> slots = new ArrayList<>(); // a TOOL Message, or a PendingTool still running
             try {
             for (ToolCall call : calls) {
+                if (cancellationToken.isCancelled()) {
+                    // Every call still gets a result, so the saved history stays valid for the next run.
+                    slots.add(toolMessage(call, CANCELLED_NOTE));
+                    continue;
+                }
                 if (output != null && call.getName().equals(StructuredOutput.TOOL_NAME)) {
                     if (acceptedJson != null) {
                         slots.add(toolMessage(call, "Ignored: an answer was already accepted."));
@@ -359,7 +364,7 @@ public final class Agent {
                 if (alongsideOthers) finishOldestWhileAtLimit(slots, config.getMaxParallelTools());
                 else finishAll(slots);
                 PendingTool pending = new PendingTool(call, policy, toolExecutor.submit(() -> tool.execute(ctx)),
-                        System.nanoTime() + policy.timeout().toNanos());
+                        System.nanoTime() + policy.timeout().toNanos(), cancellationToken);
                 slots.add(alongsideOthers ? pending : finish(pending));
             }
 
@@ -368,6 +373,7 @@ public final class Agent {
                 Object slot = slots.get(i);
                 session.getMessages().add(slot instanceof PendingTool running ? finish(running) : (Message) slot);
             }
+            cancellationToken.throwIfCancelled(); // the history is complete, so stop here
             } catch (RuntimeException | Error failure) {
                 // Stop tools still running in parallel before giving up on this step.
                 for (Object slot : slots) {
@@ -408,8 +414,14 @@ public final class Agent {
     }
 
     private record PendingTool(ToolCall call, ToolPolicy policy,
-                               java.util.concurrent.Future<ToolResult> future, long deadlineNanos) {
+                               java.util.concurrent.Future<ToolResult> future, long deadlineNanos,
+                               CancellationToken cancellationToken) {
     }
+
+    private static final String CANCELLED_NOTE = "[lambda-agent-core] Not completed: the run was cancelled.";
+
+    /** How often a waiting run checks whether it was cancelled while a tool is running. */
+    private static final long CANCEL_CHECK_NANOS = java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(20);
 
     /** Waits for every tool still running and replaces it with its TOOL message. */
     private void finishAll(List<Object> slots) {
@@ -434,12 +446,30 @@ public final class Agent {
         ToolCall call = pending.call();
         ToolResult result;
         try {
-            long remaining = Math.max(0, pending.deadlineNanos() - System.nanoTime());
             try {
-                result = pending.future().get(remaining, java.util.concurrent.TimeUnit.NANOSECONDS);
-            } catch (java.util.concurrent.TimeoutException timeout) {
-                pending.future().cancel(true);
-                throw new RuntimeException("Tool '" + call.getName() + "' timed out", timeout);
+                // Wait in short steps, so a cancelled run interrupts the tool at once instead of
+                // waiting for it to finish or time out.
+                while (true) {
+                    if (pending.cancellationToken().isCancelled() && !pending.future().isDone()) {
+                        pending.future().cancel(true);
+                        for (AgentEventListener l : listeners) {
+                            l.onToolError(call, new java.util.concurrent.CancellationException("the run was cancelled"));
+                        }
+                        return toolMessage(call, CANCELLED_NOTE);
+                    }
+                    long remaining = pending.deadlineNanos() - System.nanoTime();
+                    if (remaining <= 0 && !pending.future().isDone()) {
+                        pending.future().cancel(true);
+                        throw new RuntimeException("Tool '" + call.getName() + "' timed out");
+                    }
+                    try {
+                        result = pending.future().get(Math.max(0, Math.min(remaining, CANCEL_CHECK_NANOS)),
+                                java.util.concurrent.TimeUnit.NANOSECONDS);
+                        break;
+                    } catch (java.util.concurrent.TimeoutException stillRunning) {
+                        // check for cancellation and the deadline again
+                    }
+                }
             } finally {
                 pending.future().cancel(false);
             }

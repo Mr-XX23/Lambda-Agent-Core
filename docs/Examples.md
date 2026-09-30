@@ -47,7 +47,9 @@ provider fakes rather than live credentials.
 
 ## Cancellation, streaming and shared tool state
 
-Cancel a run from another thread; long-running tools can check the same token and stop early:
+Cancel a run from another thread. Tools still running are interrupted at once, tools not yet
+started are skipped, and each of the reply's tool calls is recorded as cancelled, so the saved
+session can be continued. Long-running tools can also check the token and stop cleanly:
 
 ```java
 CancellationToken token = new CancellationToken();

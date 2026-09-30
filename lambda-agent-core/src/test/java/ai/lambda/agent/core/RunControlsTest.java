@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -133,8 +134,12 @@ class RunControlsTest {
             public ToolResult execute(ToolInvocationContext context) throws Exception {
                 started.countDown();
                 long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-                while (!context.getCancellationToken().isCancelled() && System.nanoTime() < giveUp) Thread.sleep(10);
-                sawCancellation.add(context.getCancellationToken().isCancelled());
+                try {
+                    while (!context.getCancellationToken().isCancelled() && System.nanoTime() < giveUp) Thread.sleep(10);
+                } finally {
+                    // Whether the tool noticed first or the agent interrupted it, the token says why.
+                    sawCancellation.add(context.getCancellationToken().isCancelled());
+                }
                 return ToolResult.of("stopped");
             }
         };
@@ -166,6 +171,88 @@ class RunControlsTest {
             assertTrue(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - cancelledAt) < 5, "the subagent stopped early");
         }
         assertEquals(List.of(true), sawCancellation);
+    }
+
+    /** A tool that never checks the token: it just works for 30 seconds, unless interrupted. */
+    private static AgentTool stubbornTool(String name, boolean parallelSafe, CountDownLatch started, List<String> interrupted) {
+        return new Tool(name) {
+            public boolean isParallelSafe() { return parallelSafe; }
+
+            public ToolResult execute(ToolInvocationContext context) throws Exception {
+                started.countDown();
+                try {
+                    Thread.sleep(30_000);
+                } catch (InterruptedException e) {
+                    interrupted.add(context.getToolCallId());
+                    throw e;
+                }
+                return ToolResult.of("finished");
+            }
+        };
+    }
+
+    private static RoutingModelClient asksFor(String... toolNames) {
+        return new RoutingModelClient(r -> {
+            if (r.lastToolResult() != null) return text("done");
+            List<ToolCall> calls = new ArrayList<>();
+            for (int i = 0; i < toolNames.length; i++) calls.add(new ToolCall("c" + (i + 1), toolNames[i], "{}"));
+            return new ChatResponse(new Message(Role.ASSISTANT, "", null, null, calls), calls);
+        });
+    }
+
+    /** Runs the agent, cancels once {@code started} counts down, and returns how long stopping took. */
+    private static long cancelWhenStarted(Agent agent, CountDownLatch started) throws Exception {
+        CancellationToken token = new CancellationToken();
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            Future<AgentResult> run = pool.submit(() -> agent.run("s", "go", token));
+            assertTrue(started.await(10, TimeUnit.SECONDS), "the tool did not start");
+            long cancelledAt = System.nanoTime();
+            token.cancel();
+            Exception error = assertThrows(Exception.class, () -> run.get(10, TimeUnit.SECONDS));
+            assertInstanceOf(CancellationException.class, error.getCause());
+            return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - cancelledAt);
+        }
+    }
+
+    @Test
+    void cancellingARunInterruptsAToolThatDoesNotCheckTheToken() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        List<String> interrupted = new CopyOnWriteArrayList<>();
+        InMemorySessionStore store = new InMemorySessionStore();
+        Agent agent = new Agent(new AgentConfig("sys", asksFor("slow", "after"),
+                List.of(stubbornTool("slow", false, started, interrupted), stubbornTool("after", false, new CountDownLatch(1), interrupted)), 5),
+                store);
+        List<String> toolStarts = new CopyOnWriteArrayList<>();
+        agent.addListener(new AgentEventListener() {
+            @Override
+            public void onToolStart(ToolCall call, ToolInvocationContext context) {
+                toolStarts.add(call.getId());
+            }
+        });
+
+        long millis = cancelWhenStarted(agent, started);
+
+        assertTrue(millis < 2_000, "stopped " + millis + " ms after cancel(), not after the 30 s tool or its timeout");
+        assertEquals(List.of("c1"), interrupted, "the running tool was interrupted");
+        assertEquals(List.of("c1"), toolStarts, "no tool is started once the run is cancelled");
+        // Every tool call has a result, so the saved session can be continued.
+        List<Message> saved = store.loadOrCreate("s").getMessages();
+        List<Message> results = saved.stream().filter(m -> m.getRole() == Role.TOOL).toList();
+        assertEquals(List.of("c1", "c2"), results.stream().map(Message::getToolCallId).toList());
+        assertTrue(results.stream().allMatch(m -> m.getContent().contains("the run was cancelled")), results.toString());
+    }
+
+    @Test
+    void cancellingARunInterruptsToolsRunningTogether() throws Exception {
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        List<String> interrupted = new CopyOnWriteArrayList<>();
+        Agent agent = new Agent(new AgentConfig("sys", asksFor("fetch", "fetch"),
+                List.of(stubbornTool("fetch", true, bothStarted, interrupted)), 5), new InMemorySessionStore());
+
+        long millis = cancelWhenStarted(agent, bothStarted);
+
+        assertTrue(millis < 2_000, "stopped after " + millis + " ms");
+        assertEquals(Set.of("c1", "c2"), Set.copyOf(interrupted));
     }
 
     @Test
