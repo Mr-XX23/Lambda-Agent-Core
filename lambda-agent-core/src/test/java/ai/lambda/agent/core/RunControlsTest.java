@@ -125,7 +125,17 @@ class RunControlsTest {
             assertInstanceOf(CancellationException.class, error.getCause());
             assertTrue(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - cancelledAt) < 5, "the tool stopped early");
         }
-        assertEquals(List.of(true), sawCancellation);
+        assertEquals(List.of(true), recorded(sawCancellation));
+    }
+
+    /**
+     * What the tool recorded. A cancelled run returns without waiting for the tool's thread, so
+     * the tool may still be finishing; give it a moment.
+     */
+    private static List<Boolean> recorded(List<Boolean> sawCancellation) throws InterruptedException {
+        long giveUp = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (sawCancellation.isEmpty() && System.nanoTime() < giveUp) Thread.sleep(5);
+        return sawCancellation;
     }
 
     /** A tool that works until it is told to stop (for at most 10 seconds), and records whether it was told. */
@@ -170,7 +180,7 @@ class RunControlsTest {
             assertInstanceOf(CancellationException.class, error.getCause());
             assertTrue(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - cancelledAt) < 5, "the subagent stopped early");
         }
-        assertEquals(List.of(true), sawCancellation);
+        assertEquals(List.of(true), recorded(sawCancellation));
     }
 
     /** A tool that never checks the token: it just works for 30 seconds, unless interrupted. */
