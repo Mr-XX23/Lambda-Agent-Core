@@ -5,7 +5,7 @@ import ai.lambda.agent.core.AgentConfig;
 import ai.lambda.agent.core.DatabaseSessionStore;
 import ai.lambda.agent.core.JdbcSessionDatabase;
 import ai.lambda.agent.core.SessionDatabase;
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import org.h2.jdbcx.JdbcDataSource;
@@ -56,7 +56,7 @@ public class DatabaseSessionsChat {
         };
 
         var config = new AgentConfig("You are Lambda, a concise helpful assistant.",
-                new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview"));
+                new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview"));
         var agent = new Agent(config, new DatabaseSessionStore(database));
 
         try (Scanner scanner = new Scanner(System.in)) {

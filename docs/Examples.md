@@ -184,7 +184,7 @@ String json = result.run().getFinalText();   // the same answer as JSON
 ## Providers, media and generation
 
 ```java
-ModelClient model = OpenAIModelClient.openRouter(key, "google/gemini-3.8-flash")
+ModelClient model = OpenAICompatibleModelClient.openRouter(key, "google/gemini-3.8-flash")
         .withCapabilities(ModelCapabilities.of(Modality.IMAGE, Modality.VIDEO).withMediaUrls(Modality.VIDEO));
 agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https://example.com/clip.mp4")));
 ```

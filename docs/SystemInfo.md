@@ -18,7 +18,7 @@ The libraries use Java 25, Maven, the JDK HTTP client, and `org.json`. No web fr
 
 ## Providers
 
-`GoogleModelClient` maps the internal message model to Gemini contents and parses Gemini SSE responses. `OpenAIModelClient` maps messages and function schemas to the Chat Completions API, parses function calls, and uses a synchronous request as a compatibility fallback for `streamChat`.
+`GeminiModelClient` (module `lambda-ai-core-gemini`) and `OpenAIModelClient` (module `lambda-ai-core-openai`) map the internal message model onto the providers' official Java SDKs, including streaming, tool calls and Gemini's thought signatures. `OpenAICompatibleModelClient` in `lambda-ai-core` maps messages and function schemas to the Chat Completions API for the providers that speak it (OpenRouter, xAI, Mistral, Ollama, Experiential Labs and custom servers), without extra libraries. `Models.create("provider:model")` finds whichever providers are installed.
 
 Provider clients are deliberately small adapters. Applications can implement `ModelClient` for another provider or for deterministic tests.
 

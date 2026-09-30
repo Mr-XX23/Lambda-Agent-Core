@@ -1,6 +1,6 @@
 package ai.lambda.examples.simpleChatOnly;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 
 import java.io.IOException;
@@ -19,8 +19,8 @@ public final class SimpleChatExampleOnly {
             return;
         }
 
-        // STEP: 2 : Create ModelClient instance (GoogleModelClient for Gemini)
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        // STEP: 2 : Create ModelClient instance (GeminiModelClient, through Google's official SDK)
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // STEP: 3 : Create AgentConfig with system prompt and ModelClient
         var config = new AgentConfig(

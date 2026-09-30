@@ -41,6 +41,11 @@
         <junit.version>5.11.4</junit.version>
         <mcp.version>2.0.1</mcp.version>
         <anthropic.version>2.66.0</anthropic.version>
+        <openai.version>4.73.0</openai.version>
+        <google-genai.version>1.73.0</google-genai.version>
+        <!-- The newest Jackson any of the official SDKs needs; the SDK modules all declare it, so every
+             combination of providers resolves to this one version instead of an older one. -->
+        <jackson.version>2.19.4</jackson.version>
         <jacoco.version>0.8.14</jacoco.version>
         <!-- Lowest share of lines the tests must run, per module. The library modules raise it. -->
         <coverage.minimum>0.00</coverage.minimum>

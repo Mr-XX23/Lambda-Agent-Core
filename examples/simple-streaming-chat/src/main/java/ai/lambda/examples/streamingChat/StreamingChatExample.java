@@ -1,6 +1,6 @@
 package ai.lambda.examples.streamingChat;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 import java.io.IOException;
 import java.util.Scanner;
@@ -15,7 +15,7 @@ public final class StreamingChatExample {
             return;
         }
 
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         var config = new AgentConfig(
                 "You are Lambda, a helpful assistant. Please give long detailed responses when asked.",

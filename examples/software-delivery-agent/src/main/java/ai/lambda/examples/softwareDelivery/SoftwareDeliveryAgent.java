@@ -1,6 +1,6 @@
 package ai.lambda.examples.softwareDelivery;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 import ai.lambda.agent.prebuilt.FileReadTool;
 import ai.lambda.agent.prebuilt.ProcessTool;
@@ -42,7 +42,7 @@ public final class SoftwareDeliveryAgent {
         }
 
         String modelName = System.getenv().getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
-        var model = new GoogleModelClient(apiKey, modelName);
+        var model = new GeminiModelClient(apiKey, modelName);
         var tools = List.<AgentTool>of(
                 new FileReadTool(repository),
                 new ProcessTool(Set.of("mvn -q test", "mvn -q verify", "git diff --check"))

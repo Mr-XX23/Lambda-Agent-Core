@@ -1,7 +1,6 @@
 package ai.lambda.ai.core;
 
-import ai.lambda.ai.client.GoogleModelClient;
-import ai.lambda.ai.client.OpenAIModelClient;
+import ai.lambda.ai.client.OpenAICompatibleModelClient;
 import ai.lambda.ai.client.ResponsesModelClient;
 import org.junit.jupiter.api.Test;
 
@@ -17,28 +16,27 @@ class ModelsTest {
     private static final Function<String, String> ALL_KEYS = name -> "key-from-" + name;
     private static final Function<String, String> NO_KEYS = name -> null;
 
-    private static OpenAIModelClient openAI(ModelClient client) {
-        return assertInstanceOf(OpenAIModelClient.class, client);
+    private static OpenAICompatibleModelClient openAI(ModelClient client) {
+        return assertInstanceOf(OpenAICompatibleModelClient.class, client);
     }
 
     @Test
     void theBuiltInProvidersAreInstalled() {
-        assertEquals(Set.of("openai", "gemini", "openrouter", "xai", "mistral", "perplexity", "perplexity-router",
+        assertEquals(Set.of("openrouter", "xai", "mistral", "perplexity", "perplexity-router",
                 "experiential", "ollama", "ollama-cloud"), Models.names());
     }
 
     @Test
     void createsTheRightClientWithTheModelAndProviderAsked() {
         Map<String, String> expectedProvider = Map.of(
-                "openai", "OpenAI", "openrouter", "OpenRouter", "xai", "xAI", "mistral", "Mistral",
+                "openrouter", "OpenRouter", "xai", "xAI", "mistral", "Mistral",
                 "perplexity-router", "Perplexity Router", "experiential", "Experiential Labs",
                 "ollama", "Ollama", "ollama-cloud", "Ollama Cloud");
         expectedProvider.forEach((name, display) -> {
-            OpenAIModelClient client = openAI(Models.create(name + ":some-model", null, ALL_KEYS));
+            OpenAICompatibleModelClient client = openAI(Models.create(name + ":some-model", null, ALL_KEYS));
             assertEquals("some-model", client.model(), name + ": the model must not be mixed up with the key");
             assertEquals(display, client.provider().name(), name);
         });
-        assertInstanceOf(GoogleModelClient.class, Models.create("gemini:gemini-3.1-flash", null, ALL_KEYS));
         assertInstanceOf(ResponsesModelClient.class, Models.create("perplexity:sonar-pro", null, ALL_KEYS));
     }
 
@@ -52,19 +50,19 @@ class ModelsTest {
         assertEquals("MISTRAL_API_KEY", asked.toString());
 
         IllegalArgumentException missing = assertThrows(IllegalArgumentException.class,
-                () -> Models.create("openai:gpt-5", null, NO_KEYS));
-        assertEquals("Set OPENAI_API_KEY to use openai, or pass the key to Models.create", missing.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> Models.create("gemini", null, name -> " "));
+                () -> Models.create("xai:grok-4.7", null, NO_KEYS));
+        assertEquals("Set XAI_API_KEY to use xai, or pass the key to Models.create", missing.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> Models.create("mistral", null, name -> " "));
 
-        assertDoesNotThrow(() -> Models.create("openai:gpt-5", "explicit-key", NO_KEYS), "a key given wins");
-        assertDoesNotThrow(() -> Models.create("openai:gpt-5", "explicit-key"));
+        assertDoesNotThrow(() -> Models.create("xai:grok-4.7", "explicit-key", NO_KEYS), "a key given wins");
+        assertDoesNotThrow(() -> Models.create("xai:grok-4.7", "explicit-key"));
     }
 
     @Test
     void aProviderAloneUsesItsDefaultModel() {
-        assertEquals("gpt-5", openAI(Models.create("openai", null, ALL_KEYS)).model());
+        assertEquals("mistral-medium-latest", openAI(Models.create("mistral", null, ALL_KEYS)).model());
         assertEquals("gemma4", openAI(Models.create("ollama", null, NO_KEYS)).model(), "Ollama needs no key");
-        assertEquals("gpt-5", openAI(Models.create("openai:", null, ALL_KEYS)).model());
+        assertEquals("mistral-medium-latest", openAI(Models.create("mistral:", null, ALL_KEYS)).model());
     }
 
     @Test
@@ -75,11 +73,11 @@ class ModelsTest {
 
     @Test
     void namesAndAliasesIgnoreCase() {
-        assertEquals("OpenAI", openAI(Models.create("ChatGPT:gpt-5", null, ALL_KEYS)).provider().name());
+        assertEquals("Mistral", openAI(Models.create("MISTRAL:m", null, ALL_KEYS)).provider().name());
         assertEquals("xAI", openAI(Models.create("grok:grok-4.7", null, ALL_KEYS)).provider().name());
         assertEquals("Experiential Labs", openAI(Models.create("experiential-labs:m", null, ALL_KEYS)).provider().name());
-        assertInstanceOf(GoogleModelClient.class, Models.create(" Google : gemini-3.1-flash ", null, ALL_KEYS));
-        assertEquals("gemini", Models.provider("GOOGLE").name());
+        assertEquals("OpenRouter", openAI(Models.create(" OpenRouter : x/y ", null, ALL_KEYS)).provider().name());
+        assertEquals("xai", Models.provider("GROK").name());
     }
 
     @Test
@@ -89,9 +87,19 @@ class ModelsTest {
         assertEquals("The 'claude' provider is not installed. Add the lambda-ai-core-anthropic dependency to use it.",
                 claude.getMessage());
 
+        IllegalArgumentException openai = assertThrows(IllegalArgumentException.class,
+                () -> Models.create("ChatGPT:gpt-5", null, ALL_KEYS));
+        assertEquals("The 'chatgpt' provider is not installed. Add the lambda-ai-core-openai dependency to use it.",
+                openai.getMessage());
+
+        IllegalArgumentException gemini = assertThrows(IllegalArgumentException.class,
+                () -> Models.create("google:gemini-3.1-flash", null, ALL_KEYS));
+        assertEquals("The 'google' provider is not installed. Add the lambda-ai-core-gemini dependency to use it.",
+                gemini.getMessage());
+
         IllegalArgumentException unknown = assertThrows(IllegalArgumentException.class,
                 () -> Models.create("nope:model", null, ALL_KEYS));
-        assertTrue(unknown.getMessage().startsWith("Unknown provider 'nope'. Installed: [experiential, gemini,"),
+        assertTrue(unknown.getMessage().startsWith("Unknown provider 'nope'. Installed: [experiential, mistral,"),
                 unknown.getMessage());
 
         assertThrows(IllegalArgumentException.class, () -> Models.create(" ", null, ALL_KEYS));

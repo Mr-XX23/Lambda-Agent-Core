@@ -1,6 +1,6 @@
 package ai.lambda.examples.simpleChatWithToolCallingWithFileBasedSession;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 
 import ai.lambda.agent.core.Agent;
 import ai.lambda.agent.core.AgentConfig;
@@ -31,8 +31,8 @@ public class SimpleChatWithToolCallingWithFileBasedSession {
             return;
         }
 
-        // STEP: 2 : Create ModelClient instance (GoogleModelClient for Gemini)
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        // STEP: 2 : Create ModelClient instance (GeminiModelClient, through Google's official SDK)
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // STEP 2.5: Add Tools
         List<AgentTool> tools = List.of(

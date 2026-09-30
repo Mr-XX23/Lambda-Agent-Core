@@ -10,7 +10,7 @@ class AnthropicModelProvidersTest {
     @Test
     void installingThisModuleMakesClaudeAvailable() {
         assertTrue(Models.names().contains("anthropic"), Models.names().toString());
-        assertTrue(Models.names().contains("gemini"), "the built-in providers are still there");
+        assertTrue(Models.names().contains("mistral"), "the built-in providers are still there");
 
         AnthropicModelClient claude = assertInstanceOf(AnthropicModelClient.class, Models.create("claude:claude-sonnet-5-5", "k"));
         assertEquals("claude-sonnet-5-5", claude.model());

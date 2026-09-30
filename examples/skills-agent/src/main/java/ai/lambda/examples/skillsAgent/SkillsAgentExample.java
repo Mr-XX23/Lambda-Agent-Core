@@ -1,6 +1,6 @@
 package ai.lambda.examples.skillsAgent;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 
 import java.nio.file.Path;
@@ -23,7 +23,7 @@ public final class SkillsAgentExample {
             return;
         }
 
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // Each subfolder of ./skills with a SKILL.md is one skill.
         Skills skills = Skills.load(Path.of("skills"));

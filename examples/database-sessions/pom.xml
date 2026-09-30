@@ -26,6 +26,10 @@
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
+            <artifactId>lambda-ai-core-gemini</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ai.lambda</groupId>
             <artifactId>lambda-agent-core</artifactId>
         </dependency>
         <!-- SQL: any JDBC driver works with JdbcSessionDatabase -->

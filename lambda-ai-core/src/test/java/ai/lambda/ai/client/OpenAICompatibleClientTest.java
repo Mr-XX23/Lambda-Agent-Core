@@ -17,8 +17,8 @@ class OpenAICompatibleClientTest {
     private static final HttpOptions FAST = new HttpOptions(Duration.ofSeconds(2), Duration.ofSeconds(5), 1, Duration.ofMillis(1));
     private static final String DONE = "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"},\"finish_reason\":\"stop\"}]}";
 
-    private static OpenAIModelClient client(LocalServer server, OpenAICompatibleProvider provider, String model) {
-        return new OpenAIModelClient(provider.withBaseUrl(server.url() + "/v1"), "k", model, FAST);
+    private static OpenAICompatibleModelClient client(LocalServer server, OpenAICompatibleProvider provider, String model) {
+        return new OpenAICompatibleModelClient(provider.withBaseUrl(server.url() + "/v1"), "k", model, FAST);
     }
 
     private static JSONArray userParts(LocalServer server) {
@@ -55,7 +55,7 @@ class OpenAICompatibleClientTest {
     @Test
     void openAiRejectsWhatItCannotTakeBeforeSending() throws Exception {
         try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
-            OpenAIModelClient gpt = client(server, OpenAICompatibleProvider.OPENAI, "gpt-5");
+            OpenAICompatibleModelClient gpt = client(server, OpenAICompatibleProvider.OPENAI, "gpt-5");
 
             var video = assertThrows(UnsupportedMediaException.class, () -> gpt.chat(
                     List.of(Message.user("watch", Media.of(new byte[1], "video/mp4"))), List.of()));
@@ -167,7 +167,7 @@ class OpenAICompatibleClientTest {
         try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
             var local = OpenAICompatibleProvider.custom("Local", server.url() + "/v1");
 
-            new OpenAIModelClient(local, null, "llama", FAST).chat(List.of(new Message(Role.USER, "hi", null)), List.of());
+            new OpenAICompatibleModelClient(local, null, "llama", FAST).chat(List.of(new Message(Role.USER, "hi", null)), List.of());
 
             assertNull(server.requests.get(0).header("Authorization"));
         }
@@ -177,8 +177,8 @@ class OpenAICompatibleClientTest {
     void separateClientsReuseOneWarmConnection() throws Exception {
         try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
             var provider = OpenAICompatibleProvider.OPENAI.withBaseUrl(server.url() + "/v1");
-            var first = new OpenAIModelClient(provider, "k", "gpt-5", FAST);
-            var second = new OpenAIModelClient(provider, "k", "gpt-5-mini", FAST).withCapabilities(ModelCapabilities.textOnly());
+            var first = new OpenAICompatibleModelClient(provider, "k", "gpt-5", FAST);
+            var second = new OpenAICompatibleModelClient(provider, "k", "gpt-5-mini", FAST).withCapabilities(ModelCapabilities.textOnly());
 
             first.chat(List.of(new Message(Role.USER, "one", null)), List.of());
             second.chat(List.of(new Message(Role.USER, "two", null)), List.of());
@@ -209,6 +209,6 @@ class OpenAICompatibleClientTest {
     @Test
     void keyIsRequiredWhereTheProviderNeedsOne() {
         assertThrows(IllegalArgumentException.class,
-                () -> new OpenAIModelClient(OpenAICompatibleProvider.OPENAI, "", "gpt-5", FAST));
+                () -> new OpenAICompatibleModelClient(OpenAICompatibleProvider.OPENAI, "", "gpt-5", FAST));
     }
 }

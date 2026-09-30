@@ -1,6 +1,6 @@
 package ai.lambda.examples.todoAgent;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 
 import java.io.IOException;
@@ -29,7 +29,7 @@ public class TodoAgentExample {
         }
 
         // 2. Create model client
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // 3. Create tools
         List<AgentTool> tools = List.of(new AddTodoTool(), new ListTodosTool());

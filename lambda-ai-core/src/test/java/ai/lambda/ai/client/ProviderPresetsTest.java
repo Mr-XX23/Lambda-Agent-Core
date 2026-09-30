@@ -38,7 +38,7 @@ class ProviderPresetsTest {
                     new Message(Role.ASSISTANT, "", null, null, List.of(new ToolCall("D681PevKs", "lookup", "{}"))),
                     new Message(Role.TOOL, "found", "D681PevKs", "lookup", null));
 
-            new OpenAIModelClient(mistral, "k", "mistral-medium-latest", FAST).chat(history, List.of());
+            new OpenAICompatibleModelClient(mistral, "k", "mistral-medium-latest", FAST).chat(history, List.of());
 
             JSONArray messages = body(server).getJSONArray("messages");
             JSONArray parts = messages.getJSONObject(0).getJSONArray("content");
@@ -54,12 +54,12 @@ class ProviderPresetsTest {
         try (var server = new LocalServer(r -> LocalServer.Reply.json(DONE))) {
             var mistral = OpenAICompatibleProvider.MISTRAL.withBaseUrl(server.url() + "/v1");
 
-            new OpenAIModelClient(mistral, "k", "voxtral-small-latest", FAST)
+            new OpenAICompatibleModelClient(mistral, "k", "voxtral-small-latest", FAST)
                     .chat(List.of(Message.user("what is said?", Media.of(new byte[]{1, 2}, "audio/mpeg"))), List.of());
 
             assertEquals("AQI=", body(server).getJSONArray("messages").getJSONObject(0).getJSONArray("content")
                     .getJSONObject(1).getString("input_audio"));
-            assertThrows(UnsupportedMediaException.class, () -> new OpenAIModelClient(mistral, "k", "mistral-medium-latest", FAST)
+            assertThrows(UnsupportedMediaException.class, () -> new OpenAICompatibleModelClient(mistral, "k", "mistral-medium-latest", FAST)
                     .chat(List.of(Message.user("x", Media.of(new byte[1], "audio/mpeg"))), List.of()));
         }
     }
@@ -146,7 +146,7 @@ class ProviderPresetsTest {
 
     @Test
     void xaiChatTakesImagesButNotPdfs() {
-        ModelCapabilities caps = OpenAIModelClient.xai("k", "grok-4.7").capabilities();
+        ModelCapabilities caps = OpenAICompatibleModelClient.xai("k", "grok-4.7").capabilities();
         assertTrue(caps.accepts(Modality.IMAGE));
         assertFalse(caps.accepts(Modality.DOCUMENT));
     }
@@ -155,7 +155,7 @@ class ProviderPresetsTest {
 
     @Test
     void ollamaNeedsNoKeyAndRejectsImageUrls() {
-        OpenAIModelClient local = OpenAIModelClient.ollama("gemma4");
+        OpenAICompatibleModelClient local = OpenAICompatibleModelClient.ollama("gemma4");
 
         UnsupportedMediaException e = assertThrows(UnsupportedMediaException.class, () ->
                 local.chat(List.of(Message.user("x", Media.fromUrl("https://example.com/a.png"))), List.of()));

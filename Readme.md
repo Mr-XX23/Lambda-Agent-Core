@@ -279,25 +279,34 @@ Add the dependency for the providers you use; each brings everything that provid
 
 | Dependency | Providers (`Models.create` name) |
 |---|---|
-| `lambda-ai-core` | `openai`, `gemini`, `openrouter`, `xai`, `mistral`, `perplexity`, `perplexity-router`, `experiential`, `ollama`, `ollama-cloud` |
+| `lambda-ai-core` | `openrouter`, `xai`, `mistral`, `perplexity`, `perplexity-router`, `experiential`, `ollama`, `ollama-cloud` (built-in client, no extra libraries) |
+| `lambda-ai-core-openai` | `openai` / `chatgpt`, through OpenAI's official SDK |
+| `lambda-ai-core-gemini` | `gemini` / `google`, through Google's official SDK |
 | `lambda-ai-core-anthropic` | `anthropic` / `claude`, through Anthropic's official SDK |
-| `lambda-ai-core-gemini` | `gemini` (moving to Google's official SDK) |
-| `lambda-ai-core-openai` | `openai` (moving to OpenAI's official SDK) |
+
+Each of the last three also brings `lambda-ai-core`, so one line is enough:
+
+```xml
+<dependency>
+    <groupId>ai.lambda</groupId>
+    <artifactId>lambda-ai-core-gemini</artifactId>
+</dependency>
+```
 
 A provider that is not installed says which dependency to add. The clients can also be created
 directly:
 
 | Provider | Client | Media it accepts | Can generate |
 |---|---|---|---|
-| OpenAI | `OpenAIModelClient.openAI(key, "gpt-5")` | images, PDFs; audio on audio models | images, speech, transcription |
+| OpenAI | `new OpenAIModelClient(key, "gpt-5")` (module `lambda-ai-core-openai`) | images, PDFs; audio on audio models | images, speech, transcription |
 | Claude | `new AnthropicModelClient(key)` (module `lambda-ai-core-anthropic`) | images, PDFs, text documents | — |
-| Gemini | `new GoogleModelClient(key, "gemini-3.8-flash")` | images, audio, video, PDFs | images, speech, video (Veo) |
-| OpenRouter | `OpenAIModelClient.openRouter(key, "provider/model")` | images, audio, video, PDFs (model-dependent) | images |
-| xAI | `OpenAIModelClient.xai(key, "grok-4.7")` | images | images, speech, transcription, video |
-| Mistral | `OpenAIModelClient.mistral(key, "mistral-medium-latest")` | images, PDFs; audio on Voxtral | speech, transcription |
+| Gemini | `new GeminiModelClient(key, "gemini-3.8-flash")` (module `lambda-ai-core-gemini`) | images, audio, video, PDFs | images, speech, video (Veo) |
+| OpenRouter | `OpenAICompatibleModelClient.openRouter(key, "provider/model")` | images, audio, video, PDFs (model-dependent) | images |
+| xAI | `OpenAICompatibleModelClient.xai(key, "grok-4.7")` | images | images, speech, transcription, video |
+| Mistral | `OpenAICompatibleModelClient.mistral(key, "mistral-medium-latest")` | images, PDFs; audio on Voxtral | speech, transcription |
 | Perplexity | `ResponsesModelClient.perplexity(key, "perplexity/sonar")` | images | — |
-| Experiential Labs | `OpenAIModelClient.experientialLabs(key, "qwen3.8-27b")` | images | — |
-| Ollama | `OpenAIModelClient.ollama("gemma4")` | images (files only) | — |
+| Experiential Labs | `OpenAICompatibleModelClient.experientialLabs(key, "qwen3.8-27b")` | images | — |
+| Ollama | `OpenAICompatibleModelClient.ollama("gemma4")` | images (files only) | — |
 
 Attach media to a run, and give agents generation tools:
 

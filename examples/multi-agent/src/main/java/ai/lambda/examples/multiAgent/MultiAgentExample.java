@@ -2,7 +2,7 @@ package ai.lambda.examples.multiAgent;
 
 import ai.lambda.agent.core.*;
 import ai.lambda.agent.prebuilt.FileReadTool;
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -26,7 +26,7 @@ public final class MultiAgentExample {
             System.err.println("Please set GEMINI_API_KEY environment variable.");
             return;
         }
-        var model = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        var model = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         Agent agent = new Agent(config(model), new InMemorySessionStore());
         agent.addListener(new AgentEventListener() {

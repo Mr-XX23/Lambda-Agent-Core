@@ -92,7 +92,7 @@ agent loop does not need to know whether the provider is Gemini or OpenAI.
 Tools are registered explicitly:
 
 ```java
-var model = new GoogleModelClient(
+var model = new GeminiModelClient(
         apiKey,
         "gemini-3.1-flash-lite-preview"
 );

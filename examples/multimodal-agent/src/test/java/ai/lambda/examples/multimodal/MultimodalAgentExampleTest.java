@@ -1,8 +1,8 @@
 package ai.lambda.examples.multimodal;
 
 import ai.lambda.ai.anthropic.AnthropicModelClient;
-import ai.lambda.ai.client.GoogleModelClient;
-import ai.lambda.ai.client.OpenAIModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
+import ai.lambda.ai.client.OpenAICompatibleModelClient;
 import ai.lambda.ai.client.ResponsesModelClient;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.Modality;
@@ -31,9 +31,9 @@ class MultimodalAgentExampleTest {
         }
         assertInstanceOf(AnthropicModelClient.class, Models.create("claude", "k"));
         assertEquals("claude-sonnet-5-5", ((AnthropicModelClient) Models.create("claude:claude-sonnet-5-5", "k")).model());
-        assertInstanceOf(GoogleModelClient.class, Models.create("gemini", "k"));
+        assertInstanceOf(GeminiModelClient.class, Models.create("gemini", "k"));
         assertInstanceOf(ResponsesModelClient.class, Models.create("perplexity", "k"));
-        assertEquals("grok-4.7", ((OpenAIModelClient) Models.create("xai", "k")).model());
+        assertEquals("grok-4.7", ((OpenAICompatibleModelClient) Models.create("xai", "k")).model());
         assertTrue(Models.create("gemini", "k").capabilities().accepts(Modality.VIDEO));
     }
 

@@ -19,23 +19,24 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A client for OpenAI and every provider that speaks its Chat Completions protocol:
+ * A client for every provider that speaks OpenAI's Chat Completions protocol:
  *
  * <pre>
- * OpenAIModelClient.openAI(key, "gpt-5");
- * OpenAIModelClient.openRouter(key, "anthropic/claude-opus-5-5");
- * OpenAIModelClient.xai(key, "grok-4.7");
- * OpenAIModelClient.mistral(key, "mistral-medium-latest");
- * OpenAIModelClient.experientialLabs(key, "qwen3.8-27b");
- * OpenAIModelClient.ollama("gemma4");
+ * OpenAICompatibleModelClient.openRouter(key, "anthropic/claude-opus-5-5");
+ * OpenAICompatibleModelClient.xai(key, "grok-4.7");
+ * OpenAICompatibleModelClient.mistral(key, "mistral-medium-latest");
+ * OpenAICompatibleModelClient.experientialLabs(key, "qwen3.8-27b");
+ * OpenAICompatibleModelClient.ollama("gemma4");
  * </pre>
  *
- * For Perplexity use {@link ResponsesModelClient#perplexity}, and for Gemini {@link GoogleModelClient}.
+ * For OpenAI itself, add {@code lambda-ai-core-openai}, which uses OpenAI's official SDK
+ * ({@code Models.create("openai:gpt-5")}). For Perplexity's main API use
+ * {@link ResponsesModelClient#perplexity}.
  *
  * Messages may carry images, audio, video and documents ({@link Media}); what each provider and
  * model accepts is described by {@link #capabilities()} and checked before a request is sent.
  */
-public class OpenAIModelClient implements ModelClient {
+public class OpenAICompatibleModelClient implements ModelClient {
 
     private final OpenAICompatibleProvider provider;
     private final HttpClient httpClient;
@@ -45,19 +46,11 @@ public class OpenAIModelClient implements ModelClient {
     private final ModelCapabilities capabilities;
     private final URI chatCompletions;
 
-    public OpenAIModelClient(String apiKey, String model) {
-        this(apiKey, model, HttpOptions.defaults());
-    }
-
-    public OpenAIModelClient(String apiKey, String model, HttpOptions options) {
-        this(OpenAICompatibleProvider.OPENAI, apiKey, model, options);
-    }
-
-    public OpenAIModelClient(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
+    public OpenAICompatibleModelClient(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
         this(provider, apiKey, model, options, null);
     }
 
-    private OpenAIModelClient(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options,
+    private OpenAICompatibleModelClient(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options,
                               ModelCapabilities capabilities) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
@@ -71,44 +64,40 @@ public class OpenAIModelClient implements ModelClient {
         this.httpClient = HttpRetry.newClient(options);
     }
 
-    public static OpenAIModelClient openAI(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.OPENAI, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient openRouter(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.OPENROUTER, apiKey, model, HttpOptions.defaults());
     }
 
-    public static OpenAIModelClient openRouter(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.OPENROUTER, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient experientialLabs(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.EXPERIENTIAL_LABS, apiKey, model, HttpOptions.defaults());
     }
 
-    public static OpenAIModelClient experientialLabs(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.EXPERIENTIAL_LABS, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient xai(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.XAI, apiKey, model, HttpOptions.defaults());
     }
 
-    public static OpenAIModelClient xai(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.XAI, apiKey, model, HttpOptions.defaults());
-    }
-
-    public static OpenAIModelClient mistral(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.MISTRAL, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient mistral(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.MISTRAL, apiKey, model, HttpOptions.defaults());
     }
 
     /** A model served by Ollama on this machine. */
-    public static OpenAIModelClient ollama(String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.OLLAMA, null, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient ollama(String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.OLLAMA, null, model, HttpOptions.defaults());
     }
 
     /** A model on Ollama's hosted service. */
-    public static OpenAIModelClient ollamaCloud(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.OLLAMA_CLOUD, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient ollamaCloud(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.OLLAMA_CLOUD, apiKey, model, HttpOptions.defaults());
     }
 
     /** A model on Perplexity's Router API (private preview). */
-    public static OpenAIModelClient perplexityRouter(String apiKey, String model) {
-        return new OpenAIModelClient(OpenAICompatibleProvider.PERPLEXITY_ROUTER, apiKey, model, HttpOptions.defaults());
+    public static OpenAICompatibleModelClient perplexityRouter(String apiKey, String model) {
+        return new OpenAICompatibleModelClient(OpenAICompatibleProvider.PERPLEXITY_ROUTER, apiKey, model, HttpOptions.defaults());
     }
 
     /** A copy with different capabilities, for models that accept less (or more) than the provider's defaults. */
-    public OpenAIModelClient withCapabilities(ModelCapabilities capabilities) {
-        return new OpenAIModelClient(provider, apiKey, model, options, Objects.requireNonNull(capabilities));
+    public OpenAICompatibleModelClient withCapabilities(ModelCapabilities capabilities) {
+        return new OpenAICompatibleModelClient(provider, apiKey, model, options, Objects.requireNonNull(capabilities));
     }
 
     @Override

@@ -8,16 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class OpenAIProviderContractTest {
     @Test
     void normalizesUsageAndFinishReasons() {
-        ModelUsage usage = OpenAIModelClient.parseUsage(new JSONObject(
+        ModelUsage usage = OpenAICompatibleModelClient.parseUsage(new JSONObject(
                 "{\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":6,\"total_tokens\":10}}"));
         assertEquals(new ModelUsage(4, 6, 10), usage);
-        assertEquals(FinishReason.TOOL_CALLS, OpenAIModelClient.toFinishReason("tool_calls"));
-        assertEquals(FinishReason.CONTENT_FILTER, OpenAIModelClient.toFinishReason("content_filter"));
-        assertEquals(FinishReason.UNKNOWN, OpenAIModelClient.toFinishReason("unexpected"));
+        assertEquals(FinishReason.TOOL_CALLS, OpenAICompatibleModelClient.toFinishReason("tool_calls"));
+        assertEquals(FinishReason.CONTENT_FILTER, OpenAICompatibleModelClient.toFinishReason("content_filter"));
+        assertEquals(FinishReason.UNKNOWN, OpenAICompatibleModelClient.toFinishReason("unexpected"));
     }
 
     @Test
     void missingStreamingUsageIsEmpty() {
-        assertEquals(ModelUsage.empty(), OpenAIModelClient.parseUsage(new JSONObject()));
+        assertEquals(ModelUsage.empty(), OpenAICompatibleModelClient.parseUsage(new JSONObject()));
     }
 }

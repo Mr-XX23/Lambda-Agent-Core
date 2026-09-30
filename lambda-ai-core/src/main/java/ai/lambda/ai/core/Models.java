@@ -12,23 +12,29 @@ import java.util.function.Function;
  * installed. The key is read from the provider's environment variable unless given.
  *
  * <pre>
- * ModelClient gemini = Models.create("gemini:gemini-3.1-flash");   // key from GEMINI_API_KEY
+ * ModelClient gemini = Models.create("gemini:gemini-3.1-flash");   // needs lambda-ai-core-gemini
  * ModelClient claude = Models.create("anthropic:claude-opus-5-5");  // needs lambda-ai-core-anthropic
  * ModelClient local  = Models.create("ollama:gemma3:4b");           // no key; only the first ':' separates
  * ModelClient any    = Models.create(System.getenv("LAMBDA_MODEL")); // the model chosen in configuration
  * </pre>
  *
- * Built in: {@code openai}, {@code gemini}, {@code openrouter}, {@code xai}, {@code mistral},
- * {@code perplexity}, {@code perplexity-router}, {@code experiential}, {@code ollama} and
- * {@code ollama-cloud}. Installing {@code lambda-ai-core-anthropic} adds {@code anthropic}
- * ({@code claude}). A name without a model, such as {@code "gemini"}, uses that provider's default.
+ * Built in: {@code openrouter}, {@code xai}, {@code mistral}, {@code perplexity},
+ * {@code perplexity-router}, {@code experiential}, {@code ollama} and {@code ollama-cloud}.
+ * {@code lambda-ai-core-openai} adds {@code openai} ({@code chatgpt}), {@code lambda-ai-core-gemini}
+ * adds {@code gemini} ({@code google}), and {@code lambda-ai-core-anthropic} adds {@code anthropic}
+ * ({@code claude}), each through the provider's official SDK. A name without a model, such as {@code "gemini"}, uses that provider's
+ * default.
  */
 public final class Models {
 
     /** Providers that live in their own module, and that module's name, for a helpful error. */
     private static final Map<String, String> SEPARATE_MODULES = Map.of(
             "anthropic", "lambda-ai-core-anthropic",
-            "claude", "lambda-ai-core-anthropic");
+            "claude", "lambda-ai-core-anthropic",
+            "openai", "lambda-ai-core-openai",
+            "chatgpt", "lambda-ai-core-openai",
+            "gemini", "lambda-ai-core-gemini",
+            "google", "lambda-ai-core-gemini");
 
     private static volatile Map<String, ModelProvider> installed;
 

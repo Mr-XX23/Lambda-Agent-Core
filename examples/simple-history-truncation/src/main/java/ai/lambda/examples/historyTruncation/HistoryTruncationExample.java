@@ -1,6 +1,6 @@
 package ai.lambda.examples.historyTruncation;
 
-import ai.lambda.ai.client.GoogleModelClient;
+import ai.lambda.ai.gemini.GeminiModelClient;
 import ai.lambda.agent.core.*;
 
 import java.io.IOException;
@@ -16,7 +16,7 @@ public final class HistoryTruncationExample {
             System.err.println("Please set GEMINI_API_KEY environment variable.");
             return;
         }
-        var modelClient = new GoogleModelClient(apiKey, "gemini-3.1-flash-lite-preview");
+        var modelClient = new GeminiModelClient(apiKey, "gemini-3.1-flash-lite-preview");
 
         // STEP: Configure SlidingWindowStrategy to keep only the 3 most recent messages (+ System Prompt)
         var contextStrategy = new SlidingWindowStrategy(4); 
