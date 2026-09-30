@@ -85,6 +85,9 @@ public final class AgentHttpServer implements AutoCloseable {
 
     public void start() { server.start(); }
 
+    /** The port the server is bound to; useful when it was created with port 0 (any free port). */
+    public int port() { return server.getAddress().getPort(); }
+
     private void handleRun(HttpExchange exchange) throws IOException {
         if (!authorized(exchange)) {
             respond(exchange, 401, new JSONObject().put("error", "authentication required"));

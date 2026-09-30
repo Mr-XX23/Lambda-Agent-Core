@@ -24,7 +24,8 @@ final class HttpRetry {
     }
 
     /**
-     * Returns the first non-retryable response, or the last response once attempts run out.
+     * Returns the first non-retryable response, or the last response once attempts run out or
+     * the provider asks (with Retry-After) for a wait longer than the request timeout.
      * Callers still need to check the status code. Network failures on the final attempt
      * are thrown as a RuntimeException.
      */
@@ -39,6 +40,8 @@ final class HttpRetry {
                     return response;
                 }
                 delay = backoff(options, attempt, response.headers().firstValue("Retry-After"));
+                // A provider asking for a very long wait: hand the response back instead of blocking the caller.
+                if (delay.compareTo(options.requestTimeout()) > 0) return response;
             } catch (IOException e) {
                 if (lastAttempt) {
                     throw new RuntimeException("Failed to call " + provider + " after " + attempt + " attempt(s)", e);
@@ -61,7 +64,7 @@ final class HttpRetry {
     private static Duration backoff(HttpOptions options, int attempt, Optional<String> retryAfter) {
         if (retryAfter.isPresent()) {
             try {
-                return Duration.ofSeconds(Long.parseLong(retryAfter.get().trim()));
+                return Duration.ofSeconds(Math.max(0, Long.parseLong(retryAfter.get().trim())));
             } catch (NumberFormatException ignored) {
                 // Retry-After can also be an HTTP date; fall back to exponential backoff.
             }

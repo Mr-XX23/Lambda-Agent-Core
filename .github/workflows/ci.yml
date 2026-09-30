@@ -15,6 +15,13 @@ jobs:
           java-version: '25'
           cache: maven
       - run: mvn -B -ntp clean verify
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: '**/target/site/jacoco/'
+          if-no-files-found: ignore
       - run: mvn -B -ntp dependency:tree -Dverbose
       - name: OWASP dependency scan
         env:

@@ -101,4 +101,53 @@ class MediaTest {
                 () -> ModelCapabilities.textOnly().withToolCalling(false).check(List.of(), tools, "Acme", "m1"));
         assertEquals(Set.of(Modality.TEXT, Modality.IMAGE), imagesOnly.input());
     }
+
+    @Test
+    void sha256IdentifiesTheContent() {
+        // The well-known SHA-256 of "abc".
+        assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                Media.of("abc".getBytes(), "text/plain").sha256());
+        assertEquals(Media.of(new byte[]{1, 2}, "image/png").sha256(), Media.of(new byte[]{1, 2}, "image/jpeg").withName("x").sha256(),
+                "same bytes, same hash, whatever the type or name");
+        assertNotEquals(Media.of(new byte[]{1, 2}, "image/png").sha256(), Media.of(new byte[]{1, 3}, "image/png").sha256());
+        assertNull(Media.fromUrl("https://example.com/cat.jpg").sha256());
+    }
+
+    @Test
+    void urlMediaHasNoBytes() {
+        Media url = Media.fromUrl("https://example.com/files/REPORT.PDF?download=1", "application/pdf").withName("report.pdf");
+
+        assertNull(url.data());
+        assertNull(url.base64());
+        assertEquals(-1, url.size());
+        assertEquals("report.pdf", url.name());
+        assertEquals(Modality.DOCUMENT, Media.fromUrl("https://example.com/files/REPORT.PDF").modality(), "type from the URL path");
+        assertEquals(url, Media.fromJson(url.toJson()));
+        assertTrue(url.toString().contains("https://example.com"), url.toString());
+        assertThrows(IllegalArgumentException.class, () -> Media.fromUrl("not a url", "image/png"));
+    }
+
+    @Test
+    void equalityComparesContentTypeAndName() {
+        Media a = Media.of(new byte[]{1, 2}, "image/png").withName("a.png");
+
+        assertEquals(a, Media.fromBase64("AQI=", "IMAGE/PNG").withName("a.png"));
+        assertEquals(a.hashCode(), Media.of(new byte[]{1, 2}, "image/png").withName("a.png").hashCode());
+        assertNotEquals(a, Media.of(new byte[]{1, 2}, "image/png").withName("b.png"));
+        assertNotEquals(a, Media.of(new byte[]{1, 2}, "image/jpeg").withName("a.png"));
+        assertNotEquals(a, Media.of(new byte[]{9}, "image/png").withName("a.png"));
+        assertEquals("Media{image/png, 2 bytes, a.png}", a.toString());
+    }
+
+    @Test
+    void fileExtensionsAndUnreadableFiles() throws Exception {
+        assertEquals("mp3", Media.of(new byte[1], "audio/mpeg").fileExtension());
+        assertEquals("mov", Media.of(new byte[1], "video/quicktime").fileExtension());
+        assertEquals("bin", Media.of(new byte[1], "image/x-unusual").fileExtension());
+
+        assertThrows(java.io.UncheckedIOException.class, () -> Media.fromFile(dir.resolve("missing.png")));
+        Path unknown = Files.write(dir.resolve("data.unknowntype"), new byte[]{1});
+        assertThrows(IllegalArgumentException.class, () -> Media.fromFile(unknown));
+        assertThrows(NullPointerException.class, () -> Media.of(null, "image/png"));
+    }
 }

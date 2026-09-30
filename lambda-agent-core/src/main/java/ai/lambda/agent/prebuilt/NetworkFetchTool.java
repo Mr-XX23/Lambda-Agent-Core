@@ -21,7 +21,7 @@ public final class NetworkFetchTool implements AgentTool {
     @Override public TypedToolInput<?> getTypedInputSchema() {
         return json -> {
             URI uri = URI.create(new JSONObject(json).getString("url"));
-            if (!"https".equalsIgnoreCase(uri.getScheme()) || !allowedHosts.contains(uri.getHost())) {
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || !allowedHosts.contains(uri.getHost())) {
                 throw new SecurityException("URL scheme or host is not allowed");
             }
             return uri;

@@ -32,7 +32,8 @@ public final class ProcessTool implements AgentTool {
         };
     }
     @Override public ToolResult execute(ToolInvocationContext context) throws Exception {
-        String command = new JSONObject(context.getArgumentsJson()).getString("command");
+        // Checked here too, so the allowlist holds even when the tool is called directly.
+        String command = (String) getTypedInputSchema().parse(context.getArgumentsJson());
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             Future<byte[]> output = executor.submit(() -> process.getInputStream()

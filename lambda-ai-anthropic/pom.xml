@@ -14,6 +14,9 @@
     <packaging>jar</packaging>
     <description>Claude models for Lambda agents, through the official Anthropic Java SDK.</description>
 
+    <properties>
+        <coverage.minimum>0.85</coverage.minimum>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>ai.lambda</groupId>
