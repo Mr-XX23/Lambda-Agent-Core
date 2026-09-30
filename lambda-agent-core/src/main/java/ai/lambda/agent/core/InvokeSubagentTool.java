@@ -133,7 +133,8 @@ final class InvokeSubagentTool implements AgentTool {
         List<Task> tasks = parseTasks(context.getArgumentsJson());
         String parentSession = context.getSession().getId();
 
-        CancellationToken token = new CancellationToken();
+        // Stops the subagents when the main run is cancelled, or when only this tool call is given up.
+        CancellationToken token = context.getCancellationToken().child();
         Semaphore permits = new Semaphore(subagents.maxParallel());
         ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<Outcome>> futures = new ArrayList<>();

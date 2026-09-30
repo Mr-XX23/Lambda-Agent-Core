@@ -325,7 +325,8 @@ public final class Agent {
                 ToolInvocationContext ctx = new ToolInvocationContext(
                         call.getId(),
                         call.getArgumentsJson(),
-                        session
+                        session,
+                        cancellationToken
                 );
                 if (call.getArgumentsJson() != null
                         && call.getArgumentsJson().length() > config.getMaxToolArgumentLength()) {
@@ -452,6 +453,7 @@ public final class Agent {
         for (int attempt = 1; attempt <= policy.maxAttempts(); attempt++) {
             cancellationToken.throwIfCancelled();
             try {
+                if (!config.isStreaming()) return config.getModelClient().chat(history, tools);
                 return config.getModelClient().streamChat(
                         history,
                         tools,

@@ -45,6 +45,42 @@ List<EvaluationResult> results = new AgentEvaluator().evaluate(agent, cases);
 Evaluation cases should be committed as regression fixtures and run in CI with
 provider fakes rather than live credentials.
 
+## Cancellation, streaming and shared tool state
+
+Cancel a run from another thread; long-running tools can check the same token and stop early:
+
+```java
+CancellationToken token = new CancellationToken();
+executor.submit(() -> agent.run("session", "Index the repository", token));
+token.cancel();   // later, for example when the user closes the page
+
+// inside a tool
+public ToolResult execute(ToolInvocationContext context) throws Exception {
+    for (Path file : files) {
+        context.getCancellationToken().throwIfCancelled();
+        index(file);
+    }
+    return ToolResult.of("indexed " + files.size() + " files");
+}
+```
+
+Cancelling a run also stops its subagents. `token.child()` gives part of the work its own token:
+it is cancelled with its parent, and can be cancelled alone without stopping the parent.
+
+`config.withStreaming(false)` asks the model for each reply in one piece instead of streaming it,
+for batch jobs or for models and gateways without streaming. Listeners then get no
+`onAssistantDelta` calls.
+
+`session.getMetadata()` is safe to use from tools running in parallel
+(`withParallelToolCalls(true)`). To change a value based on its current one, use `merge` or
+`compute` so two tools cannot overwrite each other:
+
+```java
+context.getSession().getMetadata().merge("filesIndexed", 1, (a, b) -> (Integer) a + (Integer) b);
+```
+
+Keys and values must not be null; remove a key instead of storing null.
+
 ## Persistence and HTTP
 
 Keep sessions in your own database with `DatabaseSessionStore`: `JdbcSessionDatabase` for

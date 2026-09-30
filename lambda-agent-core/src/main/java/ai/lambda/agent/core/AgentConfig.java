@@ -24,6 +24,7 @@ public final class AgentConfig {
     private final ContextStrategy contextStrategy;
     private final Subagents subagents;
     private final boolean parallelToolCalls;
+    private final boolean streaming;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
         this(systemPrompt, modelClient, List.of(), 8, ToolErrorStrategy.SEND_TO_MODEL);
@@ -78,14 +79,14 @@ public final class AgentConfig {
                         ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
                         Subagents subagents) {
         this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength,
-                modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, false);
+                modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, false, true);
     }
 
     private AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                         ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
                         RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
                         ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
-                        Subagents subagents, boolean parallelToolCalls) {
+                        Subagents subagents, boolean parallelToolCalls, boolean streaming) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -105,6 +106,7 @@ public final class AgentConfig {
         this.contextStrategy = contextStrategy == null ? new NoOpStrategy() : contextStrategy;
         this.subagents = subagents;
         this.parallelToolCalls = parallelToolCalls;
+        this.streaming = streaming;
     }
 
     /**
@@ -115,7 +117,7 @@ public final class AgentConfig {
     public AgentConfig withContextStrategy(ContextStrategy contextStrategy) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls);
+                subagents, parallelToolCalls, streaming);
     }
 
     /**
@@ -130,7 +132,7 @@ public final class AgentConfig {
         allTools.addAll(skills.tools());
         return new AgentConfig(systemPrompt + "\n\n" + skills.promptSection(), modelClient, allTools,
                 maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength, modelRetryPolicy,
-                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, parallelToolCalls);
+                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, parallelToolCalls, streaming);
     }
 
     /**
@@ -145,14 +147,14 @@ public final class AgentConfig {
         }
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls);
+                subagents, parallelToolCalls, streaming);
     }
 
     /** A copy for running a subagent: its own prompt, tools and model, everything else inherited. */
     AgentConfig forSubagent(String systemPrompt, List<AgentTool> tools, ModelClient modelClient, Subagents subagents) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls);
+                subagents, parallelToolCalls, streaming);
     }
 
     /**
@@ -165,7 +167,23 @@ public final class AgentConfig {
     public AgentConfig withParallelToolCalls(boolean parallel) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallel);
+                subagents, parallel, streaming);
+    }
+
+    /**
+     * Returns a copy that asks the model for each reply in one piece ({@code false}) instead of
+     * streaming it (the default). Without streaming, listeners get no {@code onAssistantDelta}
+     * calls; everything else works the same. Useful for batch jobs, and for models or gateways
+     * that do not support streaming.
+     */
+    public AgentConfig withStreaming(boolean streaming) {
+        return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents, parallelToolCalls, streaming);
+    }
+
+    public boolean isStreaming() {
+        return streaming;
     }
 
     public boolean isParallelToolCalls() {
