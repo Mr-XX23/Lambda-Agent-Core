@@ -10,7 +10,7 @@
         <version>0.1.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>lambda-ai-anthropic</artifactId>
+    <artifactId>lambda-ai-core-anthropic</artifactId>
     <packaging>jar</packaging>
     <description>Claude models for Lambda agents, through the official Anthropic Java SDK.</description>
 

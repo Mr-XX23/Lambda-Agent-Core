@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph Models["Models"]
         Model["ModelClient in lambda-ai-core<br/>one interface for every provider"]
-        Providers["OpenAI, OpenRouter, xAI,<br/>Mistral, Ollama, Gemini,<br/>Experiential Labs, Perplexity,<br/>Claude in lambda-ai-anthropic"]
+        Providers["OpenAI, OpenRouter, xAI,<br/>Mistral, Ollama, Gemini,<br/>Experiential Labs, Perplexity,<br/>Claude in lambda-ai-core-anthropic"]
     end
 
     subgraph ToolSet["Tools"]
@@ -266,10 +266,31 @@ again. `StructuredOutput.ofSchema(json)` takes a raw JSON Schema and returns a `
 
 ## 🌍 Providers and Media
 
+Choose a model with one string; the key comes from the provider's environment variable:
+
+```java
+ModelClient model = Models.create("gemini:gemini-3.1-flash");   // GEMINI_API_KEY
+ModelClient other = Models.create("claude:claude-opus-5-5");     // ANTHROPIC_API_KEY
+ModelClient local = Models.create("ollama:gemma3:4b");           // no key
+ModelClient fromConfig = Models.create(System.getenv("LAMBDA_MODEL"));
+```
+
+Add the dependency for the providers you use; each brings everything that provider needs:
+
+| Dependency | Providers (`Models.create` name) |
+|---|---|
+| `lambda-ai-core` | `openai`, `gemini`, `openrouter`, `xai`, `mistral`, `perplexity`, `perplexity-router`, `experiential`, `ollama`, `ollama-cloud` |
+| `lambda-ai-core-anthropic` | `anthropic` / `claude`, through Anthropic's official SDK |
+| `lambda-ai-core-gemini` | `gemini` (moving to Google's official SDK) |
+| `lambda-ai-core-openai` | `openai` (moving to OpenAI's official SDK) |
+
+A provider that is not installed says which dependency to add. The clients can also be created
+directly:
+
 | Provider | Client | Media it accepts | Can generate |
 |---|---|---|---|
 | OpenAI | `OpenAIModelClient.openAI(key, "gpt-5")` | images, PDFs; audio on audio models | images, speech, transcription |
-| Claude | `new AnthropicModelClient(key)` (module `lambda-ai-anthropic`) | images, PDFs, text documents | — |
+| Claude | `new AnthropicModelClient(key)` (module `lambda-ai-core-anthropic`) | images, PDFs, text documents | — |
 | Gemini | `new GoogleModelClient(key, "gemini-3.8-flash")` | images, audio, video, PDFs | images, speech, video (Veo) |
 | OpenRouter | `OpenAIModelClient.openRouter(key, "provider/model")` | images, audio, video, PDFs (model-dependent) | images |
 | xAI | `OpenAIModelClient.xai(key, "grok-4.7")` | images | images, speech, transcription, video |

@@ -11,7 +11,9 @@
 
     <modules>
         <module>lambda-ai-core</module>
-        <module>lambda-ai-anthropic</module>
+        <module>lambda-ai-core-anthropic</module>
+        <module>lambda-ai-core-gemini</module>
+        <module>lambda-ai-core-openai</module>
         <module>lambda-agent-core</module>
         <module>lambda-agent-mcp</module>
         <module>lambda-agent-spring-boot-starter</module>
@@ -70,7 +72,17 @@
             </dependency>
             <dependency>
                 <groupId>ai.lambda</groupId>
-                <artifactId>lambda-ai-anthropic</artifactId>
+                <artifactId>lambda-ai-core-anthropic</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ai.lambda</groupId>
+                <artifactId>lambda-ai-core-gemini</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ai.lambda</groupId>
+                <artifactId>lambda-ai-core-openai</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

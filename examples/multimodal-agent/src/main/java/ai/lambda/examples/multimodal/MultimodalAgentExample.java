@@ -13,6 +13,7 @@ import ai.lambda.ai.client.OpenAITranscriber;
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.ModelClient;
+import ai.lambda.ai.core.Models;
 import ai.lambda.ai.core.UnsupportedMediaException;
 
 import java.nio.file.Files;
@@ -24,8 +25,9 @@ import java.util.Scanner;
 /**
  * Example: one agent, any provider, with images, audio, video and PDFs.
  *
- * Choose the provider with LAMBDA_PROVIDER (openai, claude, gemini, openrouter, xai, mistral,
- * perplexity, experiential, ollama) and optionally LAMBDA_MODEL; set that provider's API key.
+ * Choose the model with LAMBDA_MODEL as "provider:model" or just "provider" (default: gemini), for
+ * example "claude:claude-opus-5-5", "openai:gpt-5" or "ollama:gemma3:4b"; set that provider's API
+ * key. Any provider in Models.names() works, plus claude/anthropic (lambda-ai-core-anthropic).
  *
  * Attach files by writing @path in your message:
  *   "What's in this picture? @photo.jpg"
@@ -37,8 +39,8 @@ import java.util.Scanner;
 public final class MultimodalAgentExample {
 
     public static void main(String[] args) {
-        String provider = System.getenv().getOrDefault("LAMBDA_PROVIDER", "gemini");
-        ModelClient model = Providers.create(provider, System.getenv("LAMBDA_MODEL"), System::getenv);
+        String provider = System.getenv().getOrDefault("LAMBDA_MODEL", "gemini");
+        ModelClient model = Models.create(provider);
 
         Path workspace = Path.of(".").toAbsolutePath().normalize();
         Path out = workspace.resolve("out");

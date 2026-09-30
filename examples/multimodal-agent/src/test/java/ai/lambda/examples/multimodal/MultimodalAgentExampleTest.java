@@ -6,6 +6,7 @@ import ai.lambda.ai.client.OpenAIModelClient;
 import ai.lambda.ai.client.ResponsesModelClient;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.Modality;
+import ai.lambda.ai.core.Models;
 import ai.lambda.ai.core.UnsupportedMediaException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,23 +23,24 @@ class MultimodalAgentExampleTest {
     Path dir;
 
     @Test
-    void everyProviderCanBeCreated() {
-        for (String provider : Providers.DEFAULTS.keySet()) {
-            assertNotNull(Providers.create(provider, null, name -> "test-key"), provider);
+    void everyInstalledProviderCanBeCreated() {
+        // This example depends on lambda-ai-core-anthropic, so Claude is installed next to the built-in providers.
+        assertTrue(Models.names().contains("anthropic"), Models.names().toString());
+        for (String provider : Models.names()) {
+            assertNotNull(Models.create(provider, "test-key"), provider);
         }
-        assertInstanceOf(AnthropicModelClient.class, Providers.create("claude", null, name -> "k"));
-        assertInstanceOf(GoogleModelClient.class, Providers.create("gemini", null, name -> "k"));
-        assertInstanceOf(ResponsesModelClient.class, Providers.create("perplexity", null, name -> "k"));
-        assertEquals("grok-4.7", ((OpenAIModelClient) Providers.create("xai", null, name -> "k")).model());
-        assertTrue(Providers.create("gemini", null, name -> "k").capabilities().accepts(Modality.VIDEO));
+        assertInstanceOf(AnthropicModelClient.class, Models.create("claude", "k"));
+        assertEquals("claude-sonnet-5-5", ((AnthropicModelClient) Models.create("claude:claude-sonnet-5-5", "k")).model());
+        assertInstanceOf(GoogleModelClient.class, Models.create("gemini", "k"));
+        assertInstanceOf(ResponsesModelClient.class, Models.create("perplexity", "k"));
+        assertEquals("grok-4.7", ((OpenAIModelClient) Models.create("xai", "k")).model());
+        assertTrue(Models.create("gemini", "k").capabilities().accepts(Modality.VIDEO));
     }
 
     @Test
-    void missingKeysAndUnknownProvidersAreExplained() {
-        var missing = assertThrows(IllegalArgumentException.class, () -> Providers.create("openai", null, name -> null));
-        assertTrue(missing.getMessage().contains("OPENAI_API_KEY"), missing.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> Providers.create("nope", null, name -> "k"));
-        assertNotNull(Providers.create("ollama", null, name -> null), "Ollama runs locally without a key");
+    void unknownProvidersAreExplained() {
+        var unknown = assertThrows(IllegalArgumentException.class, () -> Models.create("nope", "k"));
+        assertTrue(unknown.getMessage().contains("anthropic"), unknown.getMessage());
     }
 
     @Test

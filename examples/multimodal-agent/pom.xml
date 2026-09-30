@@ -26,7 +26,7 @@
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
-            <artifactId>lambda-ai-anthropic</artifactId>
+            <artifactId>lambda-ai-core-anthropic</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

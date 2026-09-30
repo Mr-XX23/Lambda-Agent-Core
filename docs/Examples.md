@@ -209,7 +209,7 @@ agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https:
 - `MediaTools.generateImage/generateSpeech/generateVideo(generator, outputDir)` and
   `MediaTools.transcribeAudio(transcriber, workspace)` expose these as agent tools; generated files
   are saved to `outputDir`, and transcription only reads files inside `workspace`.
-- Claude (`lambda-ai-anthropic`) stores each assistant turn, including signed thinking blocks, as
+- Claude (`lambda-ai-core-anthropic`) stores each assistant turn, including signed thinking blocks, as
   `ProviderState` and replays it unchanged. It asks the API to drop, rather than reject, thinking
   blocks whose conversation changed (`withMismatchedThinkingDropped(false)` to fail instead), and
   enables server-side refusal fallbacks on the models that support them
