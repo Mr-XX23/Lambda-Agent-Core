@@ -10,7 +10,7 @@
 
 Lambda AI is a minimal, modular Java library designed to bring autonomous AI agent capabilities to your Java backend, Spring Boot applications, or CLI tools. 
 
-[Quick Start](#-quick-start) • [Key Features](#-key-features) • [How it Works](#-what-is-lambda-ai) • [Documentation](docs/SystemInfo.md)
+[Quick Start](#-quick-start) • [Architecture](#-architecture) • [Key Features](#-key-features) • [How it Works](#-what-is-lambda-ai) • [Documentation](docs/SystemInfo.md)
 
 </div>
 
@@ -20,6 +20,75 @@ Lambda AI is a minimal, modular Java library designed to bring autonomous AI age
 Lambda AI provides the essential building blocks to create conversational AI agents that can **think, remember, and act**. Unlike heavy, monolithic frameworks, Lambda AI acts as a clean, embeddable library. It handles the complex LLM communication loop so you can focus on building custom tools and business logic.
 
 If you want to build an AI assistant in Java that can read local files, call your company's internal APIs, or interact with databases autonomously, Lambda AI is the framework you need.
+
+## 🧱 Architecture
+
+Lambda AI is a set of small modules. Your application talks to an `Agent`; everything the agent
+uses sits behind an interface you can swap or implement yourself.
+
+```mermaid
+flowchart TB
+    App["Your application<br/>Spring Boot, CLI, service"]
+    Entry["Optional HTTP entry point<br/>AgentHttpServer or the Spring Boot starter"]
+
+    subgraph Core["lambda-agent-core"]
+        Agent["Agent<br/>the loop: call the model, run tools, repeat"]
+        Context["ContextStrategy<br/>fits history to the model's limit"]
+        Safety["Permissions, approvals,<br/>timeouts, argument checks"]
+        Events["AgentEventListener<br/>streaming, tracing, metrics"]
+        Workflow["Workflow + CheckpointStore<br/>resumable multi-step runs"]
+    end
+
+    subgraph Models["Models"]
+        Model["ModelClient in lambda-ai-core<br/>one interface for every provider"]
+        Providers["OpenAI, OpenRouter, xAI,<br/>Mistral, Ollama, Gemini,<br/>Experiential Labs, Perplexity,<br/>Claude in lambda-ai-anthropic"]
+    end
+
+    subgraph ToolSet["Tools"]
+        Tools["AgentTool<br/>what the model can call"]
+        ToolKinds["Your own tools<br/>Built-in file and process tools<br/>Skills from SKILL.md folders<br/>Subagents running in parallel<br/>MCP servers in lambda-agent-mcp<br/>Image, speech and video tools"]
+    end
+
+    subgraph Sessions["Sessions"]
+        Store["SessionStore<br/>conversation memory"]
+        StoreKinds["InMemorySessionStore<br/>JsonlSessionStore for files<br/>DatabaseSessionStore"]
+        Bridge["SessionDatabase bridge<br/>JdbcSessionDatabase for SQL<br/>your own for MongoDB, Redis..."]
+    end
+
+    App --> Agent
+    App -.-> Entry -.-> Agent
+    App -.-> Workflow
+    Agent --> Context
+    Agent --> Events
+    Agent --> Safety
+    Agent --> Model --> Providers
+    Safety --> Tools --> ToolKinds
+    Agent --> Store --> StoreKinds --> Bridge
+```
+
+One call to `agent.run(sessionId, input)` goes through this loop:
+
+```mermaid
+flowchart TD
+    Start(["agent.run(sessionId, input)"]) --> Load["Load the session<br/>and add the user message"]
+    Load --> Trim["ContextStrategy trims a copy of the history<br/>to fit the model"]
+    Trim --> Call["Call the model<br/>streaming text to listeners, retrying temporary failures"]
+    Call --> Decision{"Did the model<br/>ask for tools?"}
+    Decision -- "No" --> Save["Save the session"]
+    Save --> Done(["AgentResult<br/>text, or a Java record for structured output"])
+    Decision -- "Yes" --> Check["For each tool call:<br/>permission policy, argument checks, approval"]
+    Check --> Run["Run the tools<br/>with timeouts, one by one or in parallel"]
+    Run --> Append["Add the results to the history<br/>errors go back to the model or stop the run"]
+    Append --> Limit{"Iteration limit<br/>reached?"}
+    Limit -- "No" --> Trim
+    Limit -- "Yes" --> Save
+```
+
+The run timeout and the `CancellationToken` are checked before every model call; either one
+stops the run with an exception.
+
+More detail, including the workflow engine and observability, is in the
+[System Architecture Documentation](docs/SystemInfo.md).
 
 ## ✨ Key Features
 
@@ -287,6 +356,13 @@ Run the full validation locally with:
 ```bash
 mvn -B clean verify
 ```
+
+This runs about 300 tests against fake model providers and an in-memory SQL database, so it needs
+no API keys. It also measures test coverage: each module's report is written to
+`target/site/jacoco/index.html`, and the build fails if a library module's line coverage drops
+below its floor (`coverage.minimum` in that module's `pom.xml`). The MongoDB session test in
+`examples/database-sessions` runs only when a MongoDB is reachable at `MONGODB_URI`
+(default `localhost`).
 
 The optional API compatibility profile can be run against a released baseline with:
 
