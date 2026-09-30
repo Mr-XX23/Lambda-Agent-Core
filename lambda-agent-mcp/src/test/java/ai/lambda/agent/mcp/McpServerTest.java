@@ -165,6 +165,17 @@ class McpServerTest {
     }
 
     @Test
+    void onlyToolsTheServerMarksReadOnlyMayRunAtTheSameTimeAsOthers() {
+        for (AgentTool tool : server.tools()) {
+            boolean readOnly = tool.getCapabilities().contains(ToolCapability.READ);
+            assertEquals(readOnly, tool.isParallelSafe(), tool.getName());
+        }
+        AgentTool delete = server.tools().stream().filter(t -> t.getName().equals("test__delete_all")).findFirst().orElseThrow();
+        assertFalse(delete.isParallelSafe(), "a tool without hints is treated as one that changes things");
+        assertTrue(server.tools().stream().anyMatch(AgentTool::isParallelSafe));
+    }
+
+    @Test
     void permissionPoliciesApplyToMcpTools() {
         ToolPermissionPolicy noDestructiveTools = (session, tool, capabilities) ->
                 !capabilities.contains(ToolCapability.SENSITIVE);

@@ -66,10 +66,22 @@ What the framework does for you:
 
 What to choose yourself:
 
-- **Parallel tool calls** (`AgentConfig.withParallelToolCalls(true)`): when a model asks for
-  several tools at once, they run at the same time and the step takes as long as the slowest tool
-  instead of the sum. Enable it only if your tools are safe to run concurrently; permission checks
-  and approvals still run in order, and results keep the model's order.
+- **Mark read-only tools as parallel-safe.** When a model asks for several tools in one reply,
+  the ones that return `true` from `AgentTool.isParallelSafe()` run at the same time, so ten web
+  lookups take as long as the slowest one instead of the sum. Every other tool waits for the
+  tools before it and runs alone, so a write never overlaps anything. For
+  `search, fetch, fetch, write_file, fetch` the first three run together, then the write, then
+  the last fetch. Permission checks and approvals still happen in order, and results keep the
+  model's order.
+  - Return `true` only for tools that read or look things up and share no state between calls.
+    Tools that write files, change records or update session data keep the default, `false`.
+  - Built in: `FileReadTool`, `NetworkFetchTool`, the skill tools, and MCP tools the server marks
+    read-only are parallel-safe. `FileWriteTool`, `ProcessTool` and `invoke_subagent` are not.
+  - `withMaxParallelTools(n)` (default 8) caps how many run at once, to stay within the rate
+    limits of the sites and APIs your tools call.
+  - `withToolParallelism(ToolParallelism.NEVER)` runs everything one by one;
+    `ToolParallelism.ALWAYS` (or `withParallelToolCalls(true)`) runs every tool together, for
+    agents whose tools are all independent.
 - **Keep histories append-only for cache hits.** Trimming strategies change the start of the
   history, which ends provider-side prompt caching from that point; prefer a large enough budget
   that trimming is rare.

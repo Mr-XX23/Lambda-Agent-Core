@@ -28,6 +28,9 @@ final class LoadSkillTool implements AgentTool {
     public String getName() { return "load_skill"; }
 
     @Override
+    public boolean isParallelSafe() { return true; }
+
+    @Override
     public String getDescription() {
         return "Loads the full instructions of a skill listed in the system prompt. "
                 + "Call it before starting a task that matches the skill's description.";

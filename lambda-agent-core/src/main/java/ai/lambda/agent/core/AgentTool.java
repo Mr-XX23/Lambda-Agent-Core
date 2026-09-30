@@ -28,6 +28,17 @@ public interface AgentTool {
         return getPolicy().capabilities();
     }
 
+    /**
+     * Whether this tool may run at the same time as other tools the model asked for in the same
+     * reply. Return true only if running it alongside any other tool, including another call of
+     * itself, cannot change the outcome: it only reads or looks things up, and keeps no state that
+     * calls share. Tools that write files, change records, or update session data should keep the
+     * default, false; they then run alone, in the order the model asked.
+     */
+    default boolean isParallelSafe() {
+        return false;
+    }
+
     default ToolArgumentValidator getArgumentValidator() {
         return argumentsJson -> {};
     }

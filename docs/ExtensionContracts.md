@@ -21,6 +21,8 @@ generators block until the provider's job finishes or the request's timeout pass
 `AgentTool` is the tool boundary. Names and JSON schemas are stable model-facing
 identifiers. Implementations may add `ToolPolicy`, `TypedToolInput`, capabilities, and
 argument validation. Authorization is evaluated before validation and execution.
+`isParallelSafe()` is a promise by the tool's author that a call cannot affect, or be affected by,
+any other tool call running at the same time; the agent relies on it and cannot check it.
 
 `SessionDatabase` is the session persistence boundary behind `DatabaseSessionStore`. Implementations store strings and bytes only, must apply a `SessionChange` only at its
 expected version (throwing `SessionChange.conflict()` otherwise), and should make that

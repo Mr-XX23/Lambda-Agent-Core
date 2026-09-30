@@ -25,6 +25,9 @@ final class ReadSkillFileTool implements AgentTool {
     public String getName() { return "read_skill_file"; }
 
     @Override
+    public boolean isParallelSafe() { return true; }
+
+    @Override
     public String getDescription() {
         return "Reads a file that belongs to a skill, such as a template or reference document "
                 + "mentioned in the skill's instructions.";

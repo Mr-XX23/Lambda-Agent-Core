@@ -26,6 +26,9 @@ public final class FileReadTool implements AgentTool {
     public String getName() { return "read_file"; }
 
     @Override
+    public boolean isParallelSafe() { return true; }
+
+    @Override
     public String getDescription() { return "Reads the contents of a text file from the local file system."; }
 
     @Override

@@ -71,7 +71,9 @@ public final class McpServer implements AutoCloseable {
             String mcpName = tool.name();
             converted.add(new McpToolAdapter(toolName, McpConversions.description(tool),
                     McpConversions.schemaJson(tool.inputSchema()), policy,
-                    (argumentsJson, context) -> call(mcpName, argumentsJson)));
+                    (argumentsJson, context) -> call(mcpName, argumentsJson),
+                    // Tools the server marks read-only may run at the same time as others.
+                    capabilities.contains(ToolCapability.READ)));
         }
         for (String wanted : options.include) {
             if (mcpTools.stream().noneMatch(t -> t.name().equals(wanted))) {

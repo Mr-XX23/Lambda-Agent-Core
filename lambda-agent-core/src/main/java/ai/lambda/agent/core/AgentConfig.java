@@ -23,7 +23,11 @@ public final class AgentConfig {
     private final ToolPermissionPolicy toolPermissionPolicy;
     private final ContextStrategy contextStrategy;
     private final Subagents subagents;
-    private final boolean parallelToolCalls;
+    /** How many tools of one model reply may run at the same time, unless changed. */
+    public static final int DEFAULT_MAX_PARALLEL_TOOLS = 8;
+
+    private final ToolParallelism toolParallelism;
+    private final int maxParallelTools;
     private final boolean streaming;
 
     public AgentConfig(String systemPrompt, ModelClient modelClient) {
@@ -79,14 +83,16 @@ public final class AgentConfig {
                         ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
                         Subagents subagents) {
         this(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength,
-                modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, false, true);
+                modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents,
+                ToolParallelism.AUTO, DEFAULT_MAX_PARALLEL_TOOLS, true);
     }
 
     private AgentConfig(String systemPrompt, ModelClient modelClient, List<AgentTool> tools, int maxIterations,
                         ToolErrorStrategy toolErrorStrategy, Duration runTimeout, int maxToolArgumentLength,
                         RetryPolicy modelRetryPolicy, ToolApprovalHandler toolApprovalHandler,
                         ToolPermissionPolicy toolPermissionPolicy, ContextStrategy contextStrategy,
-                        Subagents subagents, boolean parallelToolCalls, boolean streaming) {
+                        Subagents subagents, ToolParallelism toolParallelism, int maxParallelTools,
+                        boolean streaming) {
         this.systemPrompt = Objects.requireNonNull(systemPrompt, "systemPrompt must not be null");
         this.modelClient = Objects.requireNonNull(modelClient, "modelClient must not be null");
         this.tools = tools == null ? List.of() : List.copyOf(tools);
@@ -105,7 +111,9 @@ public final class AgentConfig {
         this.toolPermissionPolicy = Objects.requireNonNull(toolPermissionPolicy, "toolPermissionPolicy must not be null");
         this.contextStrategy = contextStrategy == null ? new NoOpStrategy() : contextStrategy;
         this.subagents = subagents;
-        this.parallelToolCalls = parallelToolCalls;
+        this.toolParallelism = Objects.requireNonNull(toolParallelism, "toolParallelism must not be null");
+        if (maxParallelTools < 1) throw new IllegalArgumentException("maxParallelTools must be at least 1");
+        this.maxParallelTools = maxParallelTools;
         this.streaming = streaming;
     }
 
@@ -117,7 +125,7 @@ public final class AgentConfig {
     public AgentConfig withContextStrategy(ContextStrategy contextStrategy) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls, streaming);
+                subagents, toolParallelism, maxParallelTools, streaming);
     }
 
     /**
@@ -132,7 +140,8 @@ public final class AgentConfig {
         allTools.addAll(skills.tools());
         return new AgentConfig(systemPrompt + "\n\n" + skills.promptSection(), modelClient, allTools,
                 maxIterations, toolErrorStrategy, runTimeout, maxToolArgumentLength, modelRetryPolicy,
-                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents, parallelToolCalls, streaming);
+                toolApprovalHandler, toolPermissionPolicy, contextStrategy, subagents,
+                toolParallelism, maxParallelTools, streaming);
     }
 
     /**
@@ -147,27 +156,60 @@ public final class AgentConfig {
         }
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls, streaming);
+                subagents, toolParallelism, maxParallelTools, streaming);
     }
 
     /** A copy for running a subagent: its own prompt, tools and model, everything else inherited. */
     AgentConfig forSubagent(String systemPrompt, List<AgentTool> tools, ModelClient modelClient, Subagents subagents) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls, streaming);
+                subagents, toolParallelism, maxParallelTools, streaming);
     }
 
     /**
-     * Returns a copy that runs the tools of one model reply at the same time when the model asks
-     * for several at once, instead of one after another. Permission checks and approvals still
-     * happen in order, and results are added in the order the model asked for them. Only enable
-     * this if your tools are safe to run concurrently (for example, they do not change the same
-     * session data).
+     * Returns a copy with this way of running the tools a model asks for in one reply.
+     * <ul>
+     *   <li>{@link ToolParallelism#AUTO} (the default): tools that declare
+     *       {@link AgentTool#isParallelSafe()} run at the same time. Any other tool waits for the
+     *       ones before it and runs alone, so a write never overlaps another tool.</li>
+     *   <li>{@link ToolParallelism#ALWAYS}: every tool runs at the same time as the others.
+     *       Only for agents whose tools are all safe to run together.</li>
+     *   <li>{@link ToolParallelism#NEVER}: one after another.</li>
+     * </ul>
+     * Permission checks and approvals always happen in order, and results are added in the order
+     * the model asked for them.
      */
-    public AgentConfig withParallelToolCalls(boolean parallel) {
+    public AgentConfig withToolParallelism(ToolParallelism toolParallelism) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallel, streaming);
+                subagents, toolParallelism, maxParallelTools, streaming);
+    }
+
+    /**
+     * Shorthand for {@link #withToolParallelism}: {@code true} is {@link ToolParallelism#ALWAYS},
+     * {@code false} is {@link ToolParallelism#NEVER}.
+     */
+    public AgentConfig withParallelToolCalls(boolean parallel) {
+        return withToolParallelism(parallel ? ToolParallelism.ALWAYS : ToolParallelism.NEVER);
+    }
+
+    /**
+     * Returns a copy that runs at most this many tools of one model reply at the same time
+     * (default {@value #DEFAULT_MAX_PARALLEL_TOOLS}), so a reply asking for many web or API calls
+     * does not send them all at once.
+     */
+    public AgentConfig withMaxParallelTools(int maxParallelTools) {
+        return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
+                maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
+                subagents, toolParallelism, maxParallelTools, streaming);
+    }
+
+    public ToolParallelism getToolParallelism() {
+        return toolParallelism;
+    }
+
+    public int getMaxParallelTools() {
+        return maxParallelTools;
     }
 
     /**
@@ -179,15 +221,16 @@ public final class AgentConfig {
     public AgentConfig withStreaming(boolean streaming) {
         return new AgentConfig(systemPrompt, modelClient, tools, maxIterations, toolErrorStrategy, runTimeout,
                 maxToolArgumentLength, modelRetryPolicy, toolApprovalHandler, toolPermissionPolicy, contextStrategy,
-                subagents, parallelToolCalls, streaming);
+                subagents, toolParallelism, maxParallelTools, streaming);
     }
 
     public boolean isStreaming() {
         return streaming;
     }
 
+    /** True when every tool runs in parallel ({@link ToolParallelism#ALWAYS}). */
     public boolean isParallelToolCalls() {
-        return parallelToolCalls;
+        return toolParallelism == ToolParallelism.ALWAYS;
     }
 
     public String getSystemPrompt() {

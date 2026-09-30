@@ -18,6 +18,8 @@ public final class NetworkFetchTool implements AgentTool {
     @Override public String getDescription() { return "Fetches an HTTPS URL from an allowlisted host."; }
     @Override public String getJsonSchema() { return "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}},\"required\":[\"url\"]}"; }
     @Override public ToolPolicy getPolicy() { return new ToolPolicy(true, Duration.ofSeconds(10), 32768, Set.of(ToolCapability.NETWORK)); }
+    /** Only sends GET requests, so calls do not affect each other. */
+    @Override public boolean isParallelSafe() { return true; }
     @Override public TypedToolInput<?> getTypedInputSchema() {
         return json -> {
             URI uri = URI.create(new JSONObject(json).getString("url"));

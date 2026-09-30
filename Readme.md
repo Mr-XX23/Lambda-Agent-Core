@@ -99,7 +99,7 @@ More detail, including the workflow engine and observability, is in the
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
-- **🏎️ Fast by Default:** Shared HTTP/2 connections across clients, cached token counts, media encoded once, Claude prompt caching, and optional parallel tool calls (see [Production Operations](docs/ProductionOperations.md#performance)).
+- **🏎️ Fast by Default:** Shared HTTP/2 connections across clients, cached token counts, media encoded once, Claude prompt caching, and read-only tools that run in parallel while writes run one by one (see [Production Operations](docs/ProductionOperations.md#performance)).
 - **🔁 Bounded Model Retries:** Configure finite retries with exponential backoff for transient provider failures.
 - **⏯️ Resumable Workflows:** Compose explicit steps with checkpoint persistence and resume failed executions without repeating completed steps.
 - **🗄️ JDBC Checkpoints:** Persist versioned workflow checkpoints through any `DataSource`, including Postgres, without bundling a JDBC driver.

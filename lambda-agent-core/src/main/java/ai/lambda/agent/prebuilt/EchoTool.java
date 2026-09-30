@@ -14,6 +14,9 @@ public final class EchoTool implements AgentTool {
     }
 
     @Override
+    public boolean isParallelSafe() { return true; }
+
+    @Override
     public String getDescription() {
         return "Echoes back the given text.";
     }

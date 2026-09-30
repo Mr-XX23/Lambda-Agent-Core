@@ -348,11 +348,19 @@ public final class Agent {
 
                 for (AgentEventListener l : listeners) l.onToolStart(call, ctx);
 
-                // Start the tool. With parallel tool calls, the next tool starts right away;
-                // otherwise this one finishes first. Results are added in the calls' order either way.
+                // A tool that may run alongside others starts right away and the loop moves on.
+                // Any other tool first waits for the tools before it, then runs alone.
+                // Results are added in the calls' order either way.
+                boolean alongsideOthers = switch (config.getToolParallelism()) {
+                    case ALWAYS -> true;
+                    case NEVER -> false;
+                    case AUTO -> tool.isParallelSafe();
+                };
+                if (alongsideOthers) finishOldestWhileAtLimit(slots, config.getMaxParallelTools());
+                else finishAll(slots);
                 PendingTool pending = new PendingTool(call, policy, toolExecutor.submit(() -> tool.execute(ctx)),
                         System.nanoTime() + policy.timeout().toNanos());
-                slots.add(config.isParallelToolCalls() ? pending : finish(pending));
+                slots.add(alongsideOthers ? pending : finish(pending));
             }
 
             // Collect results in the order the model asked for them.
@@ -401,6 +409,24 @@ public final class Agent {
 
     private record PendingTool(ToolCall call, ToolPolicy policy,
                                java.util.concurrent.Future<ToolResult> future, long deadlineNanos) {
+    }
+
+    /** Waits for every tool still running and replaces it with its TOOL message. */
+    private void finishAll(List<Object> slots) {
+        for (int i = 0; i < slots.size(); i++) {
+            if (slots.get(i) instanceof PendingTool running) slots.set(i, finish(running));
+        }
+    }
+
+    /** Keeps the number of running tools below {@code limit} by waiting for the earliest ones. */
+    private void finishOldestWhileAtLimit(List<Object> slots, int limit) {
+        long running = slots.stream().filter(PendingTool.class::isInstance).count();
+        for (int i = 0; i < slots.size() && running >= limit; i++) {
+            if (slots.get(i) instanceof PendingTool oldest) {
+                slots.set(i, finish(oldest));
+                running--;
+            }
+        }
     }
 
     /** Waits for a started tool (within its timeout) and returns its TOOL message. */

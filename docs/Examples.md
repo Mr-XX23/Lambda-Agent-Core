@@ -71,8 +71,18 @@ it is cancelled with its parent, and can be cancelled alone without stopping the
 for batch jobs or for models and gateways without streaming. Listeners then get no
 `onAssistantDelta` calls.
 
-`session.getMetadata()` is safe to use from tools running in parallel
-(`withParallelToolCalls(true)`). To change a value based on its current one, use `merge` or
+Tools run at the same time only when they declare it, so lookups overlap and writes do not:
+
+```java
+final class SearchTool implements AgentTool {
+    @Override public boolean isParallelSafe() { return true; }   // only reads: may run alongside others
+    // getName, getDescription, getJsonSchema, execute ...
+}
+```
+
+See [Production Operations](ProductionOperations.md#performance) for the rules and settings.
+
+`session.getMetadata()` is safe to use from tools running in parallel. To change a value based on its current one, use `merge` or
 `compute` so two tools cannot overwrite each other:
 
 ```java
