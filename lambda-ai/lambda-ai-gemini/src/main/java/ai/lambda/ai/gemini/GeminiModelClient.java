@@ -265,7 +265,8 @@ public final class GeminiModelClient implements ModelClient {
     /** Bytes go inline; URLs (Google File API URIs, or other URLs Gemini can fetch) as file data. */
     static Part mediaPart(Media media) {
         if (media.hasData()) {
-            return Part.builder().inlineData(Blob.builder().mimeType(media.mimeType()).data(media.data()).build()).build();
+            // The SDK only reads the bytes to encode them, so they are not copied first.
+            return media.readBytes(bytes -> Part.builder().inlineData(Blob.builder().mimeType(media.mimeType()).data(bytes).build()).build());
         }
         return Part.builder().fileData(FileData.builder().mimeType(media.mimeType()).fileUri(media.url()).build()).build();
     }

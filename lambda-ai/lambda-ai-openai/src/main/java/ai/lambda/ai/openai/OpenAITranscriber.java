@@ -51,7 +51,7 @@ public final class OpenAITranscriber implements Transcriber {
         String fileName = audio.name() != null ? audio.name() : "audio." + audio.fileExtension();
         TranscriptionCreateParams.Builder params = TranscriptionCreateParams.builder()
                 .model(model)
-                .file(OpenAIClients.file(OpenAIClients.stream(audio.data()), fileName, audio.mimeType()))
+                .file(OpenAIClients.file(audio.readBytes(OpenAIClients::stream), fileName, audio.mimeType()))
                 .responseFormat(AudioResponseFormat.JSON);
         if (language != null && !language.isBlank()) params.language(language);
         TranscriptionCreateResponse response = client.audio().transcriptions().create(params.build());

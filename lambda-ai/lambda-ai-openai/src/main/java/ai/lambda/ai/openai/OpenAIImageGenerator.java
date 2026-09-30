@@ -89,7 +89,7 @@ public final class OpenAIImageGenerator implements ImageGenerator {
         String fileName = reference.name() != null ? reference.name() : "image." + reference.fileExtension();
         ImageEditParams.Builder params = ImageEditParams.builder()
                 .model(model).prompt(request.prompt()).n(request.count())
-                .image(OpenAIClients.file(ImageEditParams.Image.ofInputStream(OpenAIClients.stream(reference.data())),
+                .image(OpenAIClients.file(ImageEditParams.Image.ofInputStream(reference.readBytes(OpenAIClients::stream)),
                         fileName, reference.mimeType()));
         if (request.size() != null) params.size(request.size());
         OpenAIClients.putOptions(request.options(), params::putAdditionalBodyProperty);

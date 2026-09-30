@@ -145,7 +145,7 @@ public final class GeminiMedia {
 
     private static byte[] bytesOf(Media media, String what) {
         if (!media.hasData()) throw new IllegalArgumentException("Gemini needs the " + what + " as bytes; load it with Media.fromFile");
-        return media.data();
+        return media.readBytes(bytes -> bytes); // only read, to encode the request
     }
 
     /** Image generation with Gemini image models ("Nano Banana"), for example {@code gemini-3.1-flash-image}. */

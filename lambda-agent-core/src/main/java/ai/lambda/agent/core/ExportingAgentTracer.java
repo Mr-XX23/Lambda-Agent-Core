@@ -46,6 +46,7 @@ public final class ExportingAgentTracer implements AgentTracer {
     @Override public void onToolError(ToolCall call, Exception error) { delegate.onToolError(call, error); exportNew(); }
     @Override public void onToolAudit(ToolAuditEvent event) { delegate.onToolAudit(event); exportNew(); }
     @Override public void onAssistantDelta(String delta) { delegate.onAssistantDelta(delta); }
+    @Override public void onAssistantRestart() { delegate.onAssistantRestart(); }
     @Override public void onSubagentStart(String subagent, String task, int depth) { delegate.onSubagentStart(subagent, task, depth); exportNew(); }
     @Override public void onSubagentEnd(String subagent, int depth, AgentResult result) { delegate.onSubagentEnd(subagent, depth, result); exportNew(); }
     @Override public void onSubagentError(String subagent, int depth, Exception error) { delegate.onSubagentError(subagent, depth, error); exportNew(); }

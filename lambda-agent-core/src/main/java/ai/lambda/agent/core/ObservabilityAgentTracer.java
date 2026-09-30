@@ -22,6 +22,7 @@ public final class ObservabilityAgentTracer implements AgentTracer {
     @Override public void onToolEnd(ToolCall call, ToolResult result) { delegate.onToolEnd(call, result); }
     @Override public void onToolError(ToolCall call, Exception error) { delegate.onToolError(call, error); metrics.counter("tool.errors", 1, Map.of("tool", call.getName())); }
     @Override public void onAssistantDelta(String delta) { delegate.onAssistantDelta(delta); }
+    @Override public void onAssistantRestart() { delegate.onAssistantRestart(); }
     @Override public void accept(TraceEvent event) { delegate.accept(event); }
     @Override public List<TraceEvent> snapshot() { return delegate.snapshot(); }
 }

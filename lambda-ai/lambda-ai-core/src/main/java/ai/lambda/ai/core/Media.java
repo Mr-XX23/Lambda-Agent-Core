@@ -15,6 +15,7 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * An image, audio clip, video or document, sent to a model or produced by one. It holds
@@ -60,6 +61,8 @@ public final class Media {
     // Encoded once: the same media is sent again on every model call of a run.
     private volatile String base64;
     private volatile String sha256;
+    private volatile String dataUrl;
+    private volatile int hash;
 
     private Media(String mimeType, byte[] data, String url, String name) {
         this.mimeType = Objects.requireNonNull(mimeType, "mimeType must not be null").toLowerCase(Locale.ROOT);
@@ -146,6 +149,16 @@ public final class Media {
         return data == null ? null : data.clone();
     }
 
+    /**
+     * Gives {@code reader} the bytes themselves rather than a copy, and returns its result. For code
+     * that only reads them, such as a provider SDK building a request: large files are then not
+     * copied on every call. The reader must not change the array. URL media has no bytes.
+     */
+    public <T> T readBytes(Function<byte[], T> reader) {
+        if (data == null) throw new IllegalStateException("This media is a URL (" + url + "); there are no bytes");
+        return reader.apply(data);
+    }
+
     /** The bytes as base64, or null for URL media. */
     public String base64() {
         if (data == null) return null;
@@ -172,9 +185,12 @@ public final class Media {
         return hash;
     }
 
-    /** A {@code data:} URL holding the bytes, or the plain URL for URL media. */
+    /** A {@code data:} URL holding the bytes, or the plain URL for URL media. Built once. */
     public String dataUrl() {
-        return data == null ? url : "data:" + mimeType + ";base64," + base64();
+        if (data == null) return url;
+        String built = dataUrl;
+        if (built == null) dataUrl = built = "data:" + mimeType + ";base64," + base64();
+        return built;
     }
 
     public String url() {
@@ -223,13 +239,16 @@ public final class Media {
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof Media other && mimeType.equals(other.mimeType) && Arrays.equals(data, other.data)
+        if (o == this) return true;
+        return o instanceof Media other && hashCode() == other.hashCode() && mimeType.equals(other.mimeType) && Arrays.equals(data, other.data)
                 && Objects.equals(url, other.url) && Objects.equals(name, other.name);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mimeType, Arrays.hashCode(data), url, name);
+        int h = hash; // computed once: hashing large media is not cheap
+        if (h == 0) hash = h = Objects.hash(mimeType, Arrays.hashCode(data), url, name);
+        return h;
     }
 
     @Override

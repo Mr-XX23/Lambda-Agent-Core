@@ -360,7 +360,7 @@ public class OpenAICompatibleModelClient implements ModelClient {
                     // Plain-text documents work everywhere as text.
                     String name = media.name() != null ? media.name() : "document";
                     return new JSONObject().put("type", "text")
-                            .put("text", "[" + name + "]\n" + new String(media.data(), StandardCharsets.UTF_8));
+                            .put("text", "[" + name + "]\n" + media.readBytes(bytes -> new String(bytes, StandardCharsets.UTF_8)));
                 }
                 if (!mime.equals("application/pdf")) throw unsupported(media);
                 if (dialect == OpenAICompatibleProvider.Dialect.MISTRAL) {

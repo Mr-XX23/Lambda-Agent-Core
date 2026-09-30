@@ -400,7 +400,7 @@ public final class AnthropicModelClient implements ModelClient {
             BetaRequestDocumentBlock.Builder document = BetaRequestDocumentBlock.builder();
             if (media.mimeType().startsWith("text/")) {
                 if (!media.hasData()) throw new UnsupportedMediaException("Claude needs text documents as bytes, not a URL");
-                document.textSource(new String(media.data(), StandardCharsets.UTF_8));
+                document.textSource(media.readBytes(bytes -> new String(bytes, StandardCharsets.UTF_8)));
             } else if (media.mimeType().equals("application/pdf")) {
                 if (media.hasData()) document.base64Source(media.base64());
                 else document.urlSource(media.url());

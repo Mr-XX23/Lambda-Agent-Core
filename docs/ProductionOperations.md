@@ -67,6 +67,11 @@ Files a provider points to (generated images and videos given as URLs) are downl
 `Downloads`: without the API key (the URL is often a storage or CDN host), over https only, and at
 most 512 MB. Error messages name the host, not the full URL, which is often signed.
 
+With a model retry policy (`AgentConfig` `modelRetryPolicy`), a streamed reply that fails midway
+is retried without showing listeners any text twice: a retry that repeats the same start only
+adds the new text; one that says something else first calls `onAssistantRestart()`, so a UI can
+clear the abandoned text. Unsupported media and invalid arguments are not retried.
+
 SDK clients are shared: model clients and generators with the same provider, key and settings use
 one SDK client and so one connection pool (`ProviderClients`, at most 64). Creating clients per
 request or per subagent is cheap and keeps connections warm.

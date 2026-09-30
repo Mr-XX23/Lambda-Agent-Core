@@ -110,7 +110,7 @@ final class JsonHttp {
         HttpRequest request = request(uri).header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.concat(
                         HttpRequest.BodyPublishers.ofString(head.toString(), StandardCharsets.UTF_8),
-                        HttpRequest.BodyPublishers.ofByteArray(file.data()),
+                        file.readBytes(HttpRequest.BodyPublishers::ofByteArray),
                         HttpRequest.BodyPublishers.ofString("\r\n--" + boundary + "--\r\n", StandardCharsets.UTF_8)))
                 .build();
         return new JSONObject(check(send(request, HttpResponse.BodyHandlers.ofString())).body());

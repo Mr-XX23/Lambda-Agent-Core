@@ -263,7 +263,7 @@ public final class OpenAIModelClient implements ModelClient {
                 if (mime.startsWith("text/") && media.hasData()) {
                     // Plain-text documents are sent as text.
                     String name = media.name() != null ? media.name() : "document";
-                    yield text("[" + name + "]\n" + new String(media.data(), StandardCharsets.UTF_8));
+                    yield text("[" + name + "]\n" + media.readBytes(bytes -> new String(bytes, StandardCharsets.UTF_8)));
                 }
                 if (!mime.equals("application/pdf")) throw unsupported(media);
                 yield ChatCompletionContentPart.ofFile(ChatCompletionContentPart.File.builder()

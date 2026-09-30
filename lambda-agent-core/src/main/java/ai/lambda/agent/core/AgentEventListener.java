@@ -27,6 +27,13 @@ public interface AgentEventListener {
     // Fired when a new text chunk is received from the model (streaming)
     default void onAssistantDelta(String delta) {}
 
+    /**
+     * The reply streamed so far is abandoned: a retry of a failed model call said something else,
+     * and its text follows from the start. Clear what was shown of this reply. (A retry that
+     * repeats the same text does not trigger this; only its new text is sent.)
+     */
+    default void onAssistantRestart() {}
+
     // Subagent events. Subagents run in parallel, so these may be called from several threads at once.
     // depth is 1 for subagents of the main agent, 2 for their subagents, and so on.
 

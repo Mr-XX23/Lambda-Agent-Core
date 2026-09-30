@@ -506,20 +506,24 @@ public final class Agent {
     private ChatResponse callModelWithRetry(List<Message> history, List<ToolSchema> tools,
                                             CancellationToken cancellationToken, Instant deadline) {
         RetryPolicy policy = config.getModelRetryPolicy();
+        // Text streamed by a failed attempt is not shown again when a retry repeats it.
+        StreamedReply streamed = new StreamedReply(
+                delta -> {
+                    for (AgentEventListener listener : listeners) listener.onAssistantDelta(delta);
+                },
+                () -> {
+                    for (AgentEventListener listener : listeners) listener.onAssistantRestart();
+                });
         for (int attempt = 1; attempt <= policy.maxAttempts(); attempt++) {
             cancellationToken.throwIfCancelled();
             try {
                 if (!config.isStreaming()) return config.getModelClient().chat(history, tools);
-                return config.getModelClient().streamChat(
-                        history,
-                        tools,
-                        delta -> {
-                            for (AgentEventListener listener : listeners) {
-                                listener.onAssistantDelta(delta);
-                            }
-                        });
+                streamed.startAttempt();
+                ChatResponse response = config.getModelClient().streamChat(history, tools, streamed::accept);
+                streamed.finish();
+                return response;
             } catch (RuntimeException error) {
-                if (attempt == policy.maxAttempts() || error instanceof java.util.concurrent.CancellationException) {
+                if (attempt == policy.maxAttempts() || !retryable(error)) {
                     throw error;
                 }
                 Duration delay = policy.delayBeforeAttempt(attempt + 1);
@@ -530,6 +534,13 @@ public final class Agent {
             }
         }
         throw new IllegalStateException("Retry policy produced no model response");
+    }
+
+    /** Errors that the same request cannot fix by trying again. */
+    private static boolean retryable(RuntimeException error) {
+        return !(error instanceof java.util.concurrent.CancellationException
+                || error instanceof ai.lambda.ai.core.UnsupportedMediaException
+                || error instanceof IllegalArgumentException);
     }
 
     private static void sleepBeforeRetry(Duration delay, CancellationToken cancellationToken,
