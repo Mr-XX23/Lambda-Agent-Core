@@ -22,11 +22,15 @@
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
-            <artifactId>lambda-ai-core-openai</artifactId>
+            <artifactId>lambda-ai-openai</artifactId>
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
-            <artifactId>lambda-ai-core-gemini</artifactId>
+            <artifactId>lambda-ai-others</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ai.lambda</groupId>
+            <artifactId>lambda-ai-gemini</artifactId>
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
@@ -34,7 +38,7 @@
         </dependency>
         <dependency>
             <groupId>ai.lambda</groupId>
-            <artifactId>lambda-ai-core-anthropic</artifactId>
+            <artifactId>lambda-ai-anthropic</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

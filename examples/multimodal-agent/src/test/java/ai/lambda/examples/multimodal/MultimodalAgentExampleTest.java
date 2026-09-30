@@ -24,7 +24,7 @@ class MultimodalAgentExampleTest {
 
     @Test
     void everyInstalledProviderCanBeCreated() {
-        // This example depends on lambda-ai-core-anthropic, so Claude is installed next to the built-in providers.
+        // This example depends on lambda-ai-anthropic, so Claude is installed next to the built-in providers.
         assertTrue(Models.names().contains("anthropic"), Models.names().toString());
         for (String provider : Models.names()) {
             assertNotNull(Models.create(provider, "test-key"), provider);

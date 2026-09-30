@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ai.lambda</groupId>
+        <artifactId>lambda-ai</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>lambda-ai-others</artifactId>
+    <packaging>jar</packaging>
+    <description>Providers without an official Java SDK (OpenRouter, xAI, Mistral, Ollama, Perplexity,
+        Experiential Labs and other OpenAI-compatible servers), through small built-in clients that
+        need no extra libraries.</description>
+
+    <properties>
+        <coverage.minimum>0.85</coverage.minimum>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>ai.lambda</groupId>
+            <artifactId>lambda-ai-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

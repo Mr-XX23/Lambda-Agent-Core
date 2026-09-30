@@ -205,15 +205,15 @@ agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https:
   `MistralMedia.speech`), `VideoGenerator` (`GeminiMedia.videos` for Veo, `XaiMedia.videos`; both
   wait for the background job, up to `VideoRequest.timeout()`), and `Transcriber`
   (`OpenAITranscriber`, `XaiMedia.transcriber`, `MistralMedia.transcriber`). The OpenAI and Gemini
-  classes live in `lambda-ai-core-openai` and `lambda-ai-core-gemini` and use the official SDKs;
-  the rest are in `lambda-ai-core`, where the `OpenAICompatible…` generators also serve other
+  classes live in `lambda-ai-openai` and `lambda-ai-gemini` and use the official SDKs;
+  the rest are in `lambda-ai-others`, where the `OpenAICompatible…` generators also serve other
   servers that copy OpenAI's endpoints.
   OpenAI's video API (Sora) and Google's Imagen were shut down by their providers, so they are not
   offered.
 - `MediaTools.generateImage/generateSpeech/generateVideo(generator, outputDir)` and
   `MediaTools.transcribeAudio(transcriber, workspace)` expose these as agent tools; generated files
   are saved to `outputDir`, and transcription only reads files inside `workspace`.
-- Claude (`lambda-ai-core-anthropic`) stores each assistant turn, including signed thinking blocks, as
+- Claude (`lambda-ai-anthropic`) stores each assistant turn, including signed thinking blocks, as
   `ProviderState` and replays it unchanged. It asks the API to drop, rather than reject, thinking
   blocks whose conversation changed (`withMismatchedThinkingDropped(false)` to fail instead), and
   enables server-side refusal fallbacks on the models that support them

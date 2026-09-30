@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ai.lambda</groupId>
+        <artifactId>lambda-agent-core-java</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>lambda-ai</artifactId>
+    <packaging>pom</packaging>
+    <description>Model access for Lambda agents: the shared core and one module per provider family.</description>
+
+    <modules>
+        <!-- The shared types: ModelClient, Message, Media, Models, generation interfaces. -->
+        <module>lambda-ai-core</module>
+        <!-- Providers with an official Java SDK, one module each. -->
+        <module>lambda-ai-openai</module>
+        <module>lambda-ai-gemini</module>
+        <module>lambda-ai-anthropic</module>
+        <!-- Providers without an official Java SDK, through Lambda's own small clients. -->
+        <module>lambda-ai-others</module>
+    </modules>
+
+</project>

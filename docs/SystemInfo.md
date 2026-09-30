@@ -2,9 +2,12 @@
 
 ## Modules
 
-The Maven reactor is split into two libraries and a set of executable examples:
+The Maven reactor is split into libraries and a set of executable examples:
 
-- `lambda-ai-core` contains provider-neutral conversation types and the `ModelClient` abstraction.
+- `lambda-ai/` holds model access:
+  - `lambda-ai-core`: provider-neutral conversation types, the `ModelClient` abstraction, `Models`, and the media generation interfaces.
+  - `lambda-ai-openai`, `lambda-ai-gemini`, `lambda-ai-anthropic`: those providers through their official Java SDKs.
+  - `lambda-ai-others`: providers without an official Java SDK (OpenRouter, xAI, Mistral, Ollama, Perplexity, Experiential Labs, other OpenAI-compatible servers) through small clients on the JDK HTTP client.
 - `lambda-agent-core` contains the agent loop, tool API, event listeners, and session stores.
 - `examples` contains small CLI applications for chat, streaming, tool calling, JSONL persistence, and a stateful todo agent.
 
@@ -18,7 +21,7 @@ The libraries use Java 25, Maven, the JDK HTTP client, and `org.json`. No web fr
 
 ## Providers
 
-`GeminiModelClient` (module `lambda-ai-core-gemini`) and `OpenAIModelClient` (module `lambda-ai-core-openai`) map the internal message model onto the providers' official Java SDKs, including streaming, tool calls and Gemini's thought signatures. `OpenAICompatibleModelClient` in `lambda-ai-core` maps messages and function schemas to the Chat Completions API for the providers that speak it (OpenRouter, xAI, Mistral, Ollama, Experiential Labs and custom servers), without extra libraries. `Models.create("provider:model")` finds whichever providers are installed.
+`GeminiModelClient` (module `lambda-ai-gemini`) and `OpenAIModelClient` (module `lambda-ai-openai`) map the internal message model onto the providers' official Java SDKs, including streaming, tool calls and Gemini's thought signatures. `OpenAICompatibleModelClient` in `lambda-ai-others` maps messages and function schemas to the Chat Completions API for the providers that speak it (OpenRouter, xAI, Mistral, Ollama, Experiential Labs and custom servers), without extra libraries. `Models.create("provider:model")` finds whichever providers are installed.
 
 Provider clients are deliberately small adapters. Applications can implement `ModelClient` for another provider or for deterministic tests.
 

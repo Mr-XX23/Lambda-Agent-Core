@@ -26,7 +26,7 @@ import java.util.Scanner;
  *
  * Choose the model with LAMBDA_MODEL as "provider:model" or just "provider" (default: gemini), for
  * example "claude:claude-opus-5-5", "openai:gpt-5" or "ollama:gemma3:4b"; set that provider's API
- * key. Any provider in Models.names() works, plus claude/anthropic (lambda-ai-core-anthropic).
+ * key. Any provider in Models.names() works, plus claude/anthropic (lambda-ai-anthropic).
  *
  * Attach files by writing @path in your message:
  *   "What's in this picture? @photo.jpg"

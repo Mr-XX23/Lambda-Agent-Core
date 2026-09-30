@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph Models["Models"]
         Model["ModelClient in lambda-ai-core<br/>one interface for every provider"]
-        Providers["OpenAI, OpenRouter, xAI,<br/>Mistral, Ollama, Gemini,<br/>Experiential Labs, Perplexity,<br/>Claude in lambda-ai-core-anthropic"]
+        Providers["lambda-ai-openai, lambda-ai-gemini,<br/>lambda-ai-anthropic: official SDKs<br/>lambda-ai-others: OpenRouter, xAI,<br/>Mistral, Ollama, Perplexity..."]
     end
 
     subgraph ToolSet["Tools"]
@@ -279,17 +279,19 @@ Add the dependency for the providers you use; each brings everything that provid
 
 | Dependency | Providers (`Models.create` name) |
 |---|---|
-| `lambda-ai-core` | `openrouter`, `xai`, `mistral`, `perplexity`, `perplexity-router`, `experiential`, `ollama`, `ollama-cloud` (built-in client, no extra libraries) |
-| `lambda-ai-core-openai` | `openai` / `chatgpt`, through OpenAI's official SDK |
-| `lambda-ai-core-gemini` | `gemini` / `google`, through Google's official SDK |
-| `lambda-ai-core-anthropic` | `anthropic` / `claude`, through Anthropic's official SDK |
+| `lambda-ai-openai` | `openai` / `chatgpt`, through OpenAI's official SDK |
+| `lambda-ai-gemini` | `gemini` / `google`, through Google's official SDK |
+| `lambda-ai-anthropic` | `anthropic` / `claude`, through Anthropic's official SDK |
+| `lambda-ai-others` | `openrouter`, `xai`, `mistral`, `perplexity`, `perplexity-router`, `experiential`, `ollama`, `ollama-cloud`: providers without an official Java SDK, through small built-in clients with no extra libraries |
 
-Each of the last three also brings `lambda-ai-core`, so one line is enough:
+The modules live in the `lambda-ai/` folder next to `lambda-ai-core`, which holds what they
+share (`ModelClient`, `Message`, `Media`, `Models`). Each brings `lambda-ai-core`, so one line is
+enough:
 
 ```xml
 <dependency>
     <groupId>ai.lambda</groupId>
-    <artifactId>lambda-ai-core-gemini</artifactId>
+    <artifactId>lambda-ai-gemini</artifactId>
 </dependency>
 ```
 
@@ -298,9 +300,9 @@ directly:
 
 | Provider | Client | Media it accepts | Can generate |
 |---|---|---|---|
-| OpenAI | `new OpenAIModelClient(key, "gpt-5")` (module `lambda-ai-core-openai`) | images, PDFs; audio on audio models | images, speech, transcription |
-| Claude | `new AnthropicModelClient(key)` (module `lambda-ai-core-anthropic`) | images, PDFs, text documents | — |
-| Gemini | `new GeminiModelClient(key, "gemini-3.8-flash")` (module `lambda-ai-core-gemini`) | images, audio, video, PDFs | images, speech, video (Veo) |
+| OpenAI | `new OpenAIModelClient(key, "gpt-5")` (module `lambda-ai-openai`) | images, PDFs; audio on audio models | images, speech, transcription |
+| Claude | `new AnthropicModelClient(key)` (module `lambda-ai-anthropic`) | images, PDFs, text documents | — |
+| Gemini | `new GeminiModelClient(key, "gemini-3.8-flash")` (module `lambda-ai-gemini`) | images, audio, video, PDFs | images, speech, video (Veo) |
 | OpenRouter | `OpenAICompatibleModelClient.openRouter(key, "provider/model")` | images, audio, video, PDFs (model-dependent) | images |
 | xAI | `OpenAICompatibleModelClient.xai(key, "grok-4.7")` | images | images, speech, transcription, video |
 | Mistral | `OpenAICompatibleModelClient.mistral(key, "mistral-medium-latest")` | images, PDFs; audio on Voxtral | speech, transcription |

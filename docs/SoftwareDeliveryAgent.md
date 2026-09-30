@@ -15,7 +15,8 @@ mvn -pl examples/software-delivery-agent exec:java
 ```
 
 The `install` step is required the first time because the example depends on
-the sibling `lambda-ai-core` and `lambda-agent-core` modules. It places those
+the sibling `lambda-ai-gemini` (which brings `lambda-ai-core`) and `lambda-agent-core`
+modules. It places those
 reactor artifacts in the local Maven repository so the separate `exec:java`
 invocation can resolve them.
 

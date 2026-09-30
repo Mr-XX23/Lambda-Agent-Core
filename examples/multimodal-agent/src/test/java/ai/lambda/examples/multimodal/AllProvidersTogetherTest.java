@@ -1,7 +1,7 @@
 package ai.lambda.examples.multimodal;
 
 import ai.lambda.ai.anthropic.AnthropicModelClient;
-import ai.lambda.ai.client.HttpOptions;
+import ai.lambda.ai.core.HttpOptions;
 import ai.lambda.ai.core.ChatResponse;
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
