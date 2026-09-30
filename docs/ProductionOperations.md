@@ -1,5 +1,11 @@
 # Production operations
 
+## Session persistence
+
+Run several instances against one database with `DatabaseSessionStore`; see
+[Database Sessions](DatabaseSessions.md) for the tables, the NoSQL bridge, and how
+concurrent saves of one session are handled.
+
 ## Checkpoint persistence
 
 `JdbcCheckpointStore` accepts an application-owned `DataSource`, so Postgres drivers,

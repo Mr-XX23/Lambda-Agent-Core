@@ -161,7 +161,7 @@ class JsonlSessionStoreMediaTest {
 
         RuntimeException error = assertThrows(RuntimeException.class,
                 () -> new JsonlSessionStore(storageDir).loadOrCreate("bad"));
-        assertTrue(error.getCause().getMessage().contains("Invalid media file name"), error.getCause().getMessage());
+        assertTrue(error.getCause().getMessage().contains("Invalid media name"), error.getCause().getMessage());
     }
 
     @Test

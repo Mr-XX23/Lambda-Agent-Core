@@ -45,3 +45,4 @@ Thumbs.db
 
 # VS Code
 .vscode/
+.sessions-db/

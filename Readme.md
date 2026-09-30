@@ -26,7 +26,7 @@ If you want to build an AI assistant in Java that can read local files, call you
 - **🔌 Nine LLM Providers:** OpenAI, Claude, Gemini, OpenRouter, xAI, Mistral, Perplexity, Experiential Labs and Ollama behind one `ModelClient` interface, with normalized usage/finish metadata and streaming tool calls.
 - **🖼️ Images, Audio, Video and PDFs:** Send media to models that accept it (each client declares what its model takes and rejects the rest with a clear message), and generate images, speech and video, or transcribe audio, directly or as agent tools.
 - **🛠️ Autonomous Tool Calling:** Define tools using standard Java interfaces. The agent automatically decides when to call them and maps JSON arguments to your Java methods.
-- **🧠 Persistent Memory:** Built-in `JsonlSessionStore` ensures your AI agent never loses context, with JDBC and Redis checkpoint stores for durable, versioned workflow state.
+- **🧠 Persistent Memory:** Keep sessions in files (`JsonlSessionStore`) or in your own database, SQL through any JDBC `DataSource` or NoSQL through a two-method bridge (`DatabaseSessionStore`), with JDBC and Redis checkpoint stores for durable, versioned workflow state.
 - **⚡ Event-Driven Architecture:** Use `AgentEventListener` to hook into the agent's thought process, allowing for real-time UI streaming and execution monitoring.
 - **🛡️ Built for Production:** Robust error-handling strategies (`SEND_TO_MODEL` vs `THROW`) ensure your agent can self-heal when a tool fails.
 - **📈 Runtime Controls:** Run IDs, cancellation tokens, deadlines, token-usage metadata, lifecycle events, and tool argument limits support production operation.
@@ -259,6 +259,9 @@ approvals, timeouts and result limits apply as for any other tool. See
 
 ## 📖 Documentation
 For a deep dive into the architecture, the agent loop, and advanced configuration options, please read the [System Architecture Documentation](docs/SystemInfo.md).
+
+To keep sessions in Postgres, MySQL, MongoDB, Redis or any other database you run, see
+[Database Sessions](docs/DatabaseSessions.md).
 
 Public extension contracts and compatibility guarantees are documented in
 [Extension Contracts](docs/ExtensionContracts.md). Runnable production patterns are

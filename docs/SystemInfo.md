@@ -26,6 +26,8 @@ Provider clients are deliberately small adapters. Applications can implement `Mo
 
 `InMemorySessionStore` is intended for short-lived applications and tests. `JsonlSessionStore` stores one JSON message per line, a separate metadata JSON file, and attached media as files in a `<id>.media/` folder named by their SHA-256, which the messages refer to by name. Media files are written once; files no longer referenced are deleted after the messages are saved. Sessions saved with inline base64 media by older versions still load. Writes use a temporary file, flush and force the file contents, then replace the target so an interrupted write does not normally leave a partial session. Session IDs are restricted to filename-safe characters to prevent path traversal.
 
+`DatabaseSessionStore` keeps sessions in the application's own database through a `SessionDatabase` bridge: `JdbcSessionDatabase` for any JDBC `DataSource`, or an application-written implementation for NoSQL stores. Each save sends only the messages added since the last save (or rewrites from the first changed message), the metadata, and media not yet stored. A per-session version makes a second concurrent save fail with `OptimisticLockException` instead of losing messages. See [Database Sessions](DatabaseSessions.md).
+
 Session messages and metadata are mutable by design so tools can maintain application state. Applications that share a session across concurrent requests should serialize calls to `Agent.run` per session.
 
 Each run receives a unique run ID. `CancellationToken` can stop a run between model/tool steps, and `AgentConfig` supports a run deadline and maximum tool-argument size. `AgentEventListener` exposes run start/end and normalized model-response events for tracing.

@@ -47,6 +47,11 @@ provider fakes rather than live credentials.
 
 ## Persistence and HTTP
 
+Keep sessions in your own database with `DatabaseSessionStore`: `JdbcSessionDatabase` for
+any JDBC `DataSource`, or a two-method `SessionDatabase` bridge for NoSQL. See
+[Database Sessions](DatabaseSessions.md) and `examples/database-sessions` (H2, Postgres,
+MongoDB, Redis).
+
 Use `RedisCheckpointStore` with an application-provided atomic Redis client for
 distributed workers, or `JdbcCheckpointStore` with a pooled `DataSource`. Expose an
 agent through `AgentHttpServer` with a bearer token and request limits, or add the

@@ -27,6 +27,7 @@
         <module>examples/structured-output</module>
         <module>examples/multimodal-agent</module>
         <module>examples/software-delivery-agent</module>
+        <module>examples/database-sessions</module>
     </modules>
 
     <properties>

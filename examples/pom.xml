@@ -25,6 +25,7 @@
         <module>structured-output</module>
         <module>multimodal-agent</module>
         <module>software-delivery-agent</module>
+        <module>database-sessions</module>
     </modules>
 
 </project>

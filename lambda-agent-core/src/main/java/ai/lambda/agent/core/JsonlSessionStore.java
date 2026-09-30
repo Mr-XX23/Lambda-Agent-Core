@@ -2,20 +2,17 @@ package ai.lambda.agent.core;
 
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -29,10 +26,11 @@ import java.util.stream.Stream;
  * Messages refer to their media by file name, so the JSONL stays small and a photo is written
  * once, not re-encoded as base64 on every save. Sessions saved by older versions, with the
  * media inline as base64, still load and are converted on the next save.
+ *
+ * <p>For sessions shared between several application instances, use a
+ * {@link DatabaseSessionStore} instead.
  */
 public final class JsonlSessionStore implements SessionStore {
-
-    private static final Pattern MEDIA_FILE = Pattern.compile("[0-9a-f]{64}\\.[a-z0-9]{1,10}");
 
     private final Path storageDir;
 
@@ -56,23 +54,7 @@ public final class JsonlSessionStore implements SessionStore {
         // 1. Load Metadata (Tool State)
         if (Files.exists(metaFile)) {
             try {
-                String content = Files.readString(metaFile);
-                if (!content.isBlank()) {
-                    JSONObject metaObj = new JSONObject(content);
-                    for (String key : metaObj.keySet()) {
-                        Object value = metaObj.get(key);
-                        // Convert JSONArray to List for easier Java usage
-                        if (value instanceof org.json.JSONArray array) {
-                            List<Object> list = new java.util.ArrayList<>();
-                            for (int i = 0; i < array.length(); i++) {
-                                list.add(array.get(i));
-                            }
-                            session.getMetadata().put(key, list);
-                        } else {
-                            session.getMetadata().put(key, value);
-                        }
-                    }
-                }
+                SessionJson.decodeMetadata(Files.readString(metaFile), session.getMetadata());
             } catch (Exception e) {
                 throw new RuntimeException("Failed to load metadata for session " + sessionId, e);
             }
@@ -88,17 +70,13 @@ public final class JsonlSessionStore implements SessionStore {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.isBlank()) continue;
-                JSONObject obj = new JSONObject(line);
-                JSONArray mediaArray = (JSONArray) obj.remove("media");
-                Message message = Message.fromJson(obj);
-                if (mediaArray != null) {
-                    List<Media> media = new ArrayList<>();
-                    for (int i = 0; i < mediaArray.length(); i++) {
-                        media.add(readMedia(mediaArray.getJSONObject(i), mediaDir, sessionId));
+                session.getMessages().add(SessionJson.decode(new JSONObject(line), name -> {
+                    Path file = mediaDir.resolve(name);
+                    if (!Files.exists(file)) {
+                        throw new IOException("Media file missing for session " + sessionId + ": " + file);
                     }
-                    message = message.withMedia(media);
-                }
-                session.getMessages().add(message);
+                    return Files.readAllBytes(file);
+                }));
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to load session " + sessionId, e);
@@ -116,24 +94,21 @@ public final class JsonlSessionStore implements SessionStore {
         // 1. Save Messages, with media as separate files
         try {
             Path mediaDir = mediaDir(session.getId());
-            Set<String> mediaFiles = new HashSet<>();
+            Map<String, Media> media = new LinkedHashMap<>();
             StringBuilder content = new StringBuilder();
             for (Message msg : session.getMessages()) {
-                if (msg.getMedia().isEmpty()) {
-                    content.append(msg.toJson()).append(System.lineSeparator());
-                    continue;
+                content.append(SessionJson.encode(msg, media)).append(System.lineSeparator());
+            }
+            for (Map.Entry<String, Media> entry : media.entrySet()) {
+                Path file = mediaDir.resolve(entry.getKey());
+                if (!Files.exists(file)) { // named by content, so an existing file already holds these bytes
+                    Files.createDirectories(mediaDir);
+                    atomicWrite(file, entry.getValue().data());
                 }
-                JSONObject obj = msg.withMedia(List.of()).toJson();
-                JSONArray mediaArray = new JSONArray();
-                for (Media media : msg.getMedia()) {
-                    mediaArray.put(writeMedia(media, mediaDir, mediaFiles));
-                }
-                obj.put("media", mediaArray);
-                content.append(obj).append(System.lineSeparator());
             }
             atomicWrite(sessionFile, content.toString());
             // Only after the messages are safely written: they no longer refer to these files.
-            deleteUnusedMedia(mediaDir, mediaFiles);
+            deleteUnusedMedia(mediaDir, media.keySet());
         } catch (Exception e) {
             throw new RuntimeException("Failed to save session " + session.getId(), e);
         }
@@ -153,43 +128,13 @@ public final class JsonlSessionStore implements SessionStore {
         return storageDir.resolve(sessionId + ".media");
     }
 
-    /** Writes the media's bytes unless an identical file is already stored; returns its JSON reference. */
-    private static JSONObject writeMedia(Media media, Path mediaDir, Set<String> mediaFiles) throws IOException {
-        if (!media.hasData()) return media.toJson(); // a URL: nothing to store
-        String fileName = media.sha256() + "." + media.fileExtension();
-        if (mediaFiles.add(fileName)) {
-            Path file = mediaDir.resolve(fileName);
-            if (!Files.exists(file)) {
-                Files.createDirectories(mediaDir);
-                atomicWrite(file, media.data());
-            }
-        }
-        JSONObject ref = new JSONObject().put("mimeType", media.mimeType()).put("file", fileName);
-        if (media.name() != null) ref.put("name", media.name());
-        return ref;
-    }
-
-    private static Media readMedia(JSONObject json, Path mediaDir, String sessionId) throws IOException {
-        if (!json.has("file")) return Media.fromJson(json); // a URL, or inline base64 from older versions
-        String fileName = json.getString("file");
-        if (!MEDIA_FILE.matcher(fileName).matches()) {
-            throw new IOException("Invalid media file name in session " + sessionId + ": " + fileName);
-        }
-        Path file = mediaDir.resolve(fileName);
-        if (!Files.exists(file)) {
-            throw new IOException("Media file missing for session " + sessionId + ": " + file);
-        }
-        Media media = Media.of(Files.readAllBytes(file), json.getString("mimeType"));
-        return json.has("name") ? media.withName(json.getString("name")) : media;
-    }
-
     private static void deleteUnusedMedia(Path mediaDir, Set<String> used) throws IOException {
         if (!Files.isDirectory(mediaDir)) return;
         try (Stream<Path> files = Files.list(mediaDir)) {
             for (Path file : files.toList()) {
                 String name = file.getFileName().toString();
                 // Files this store did not write are left alone.
-                if (MEDIA_FILE.matcher(name).matches() && !used.contains(name)) Files.deleteIfExists(file);
+                if (SessionJson.MEDIA_NAME.matcher(name).matches() && !used.contains(name)) Files.deleteIfExists(file);
             }
         }
         if (used.isEmpty()) {

@@ -22,6 +22,10 @@ generators block until the provider's job finishes or the request's timeout pass
 identifiers. Implementations may add `ToolPolicy`, `TypedToolInput`, capabilities, and
 argument validation. Authorization is evaluated before validation and execution.
 
+`SessionDatabase` is the session persistence boundary behind `DatabaseSessionStore`. Implementations store strings and bytes only, must apply a `SessionChange` only at its
+expected version (throwing `SessionChange.conflict()` otherwise), and should make that
+check and the message update atomic. See [Database Sessions](DatabaseSessions.md).
+
 `CheckpointStore` is the workflow persistence boundary. Implementations must preserve
 execution IDs and versions and must reject stale expected-version writes with
 `OptimisticLockException`.
