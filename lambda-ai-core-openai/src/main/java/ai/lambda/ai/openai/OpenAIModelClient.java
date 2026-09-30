@@ -14,9 +14,7 @@ import ai.lambda.ai.core.ToolCall;
 import ai.lambda.ai.core.ToolSchema;
 import ai.lambda.ai.core.UnsupportedMediaException;
 import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.core.JsonValue;
-import com.openai.core.Timeout;
 import com.openai.core.http.StreamResponse;
 import com.openai.models.FunctionDefinition;
 import com.openai.models.FunctionParameters;
@@ -82,7 +80,7 @@ public final class OpenAIModelClient implements ModelClient {
      * @param baseUrl another API root, such as a proxy that forwards to OpenAI; null for OpenAI's own
      */
     public OpenAIModelClient(String apiKey, String model, HttpOptions options, String baseUrl) {
-        this(sdkClient(apiKey, options, baseUrl), model);
+        this(OpenAIClients.create(apiKey, options, baseUrl), model);
     }
 
     /** Uses an SDK client you configured yourself (for example with a proxy or an organization). */
@@ -95,18 +93,6 @@ public final class OpenAIModelClient implements ModelClient {
         this.model = Objects.requireNonNull(model, "model must not be null");
         this.capabilities = capabilities != null ? capabilities
                 : OpenAICompatibleProvider.OPENAI.capabilities().apply(model);
-    }
-
-    private static OpenAIClient sdkClient(String apiKey, HttpOptions options, String baseUrl) {
-        if (apiKey == null || apiKey.isBlank()) throw new IllegalArgumentException("OpenAI needs an API key");
-        Objects.requireNonNull(options, "options must not be null");
-        OpenAIOkHttpClient.Builder builder = OpenAIOkHttpClient.builder()
-                .apiKey(apiKey)
-                .maxRetries(options.maxAttempts() - 1)
-                // "read" bounds the wait for the next bytes, so long streamed answers are not cut off.
-                .timeout(Timeout.builder().connect(options.connectTimeout()).read(options.requestTimeout()).build());
-        if (baseUrl != null) builder.baseUrl(baseUrl);
-        return builder.build();
     }
 
     /** A copy with different capabilities, for models that accept less (or more) than assumed. */

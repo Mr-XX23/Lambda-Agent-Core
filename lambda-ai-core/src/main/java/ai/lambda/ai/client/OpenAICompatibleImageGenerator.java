@@ -18,7 +18,7 @@ import java.util.Objects;
  * ({@code "1k"}, {@code "2k"}).
  *
  * <pre>
- * var images = new OpenAIImageGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-image-2");
+ * var images = new OpenAICompatibleImageGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-image-2");
  * images.generateImage("A lighthouse at dawn, watercolor").saveTo(Path.of("lighthouse.png"));
  * </pre>
  *
@@ -26,17 +26,17 @@ import java.util.Objects;
  * {@link ImageRequest#options()} can add fields such as {@code quality} or {@code output_format}.
  * Reference images are not supported by this endpoint.
  */
-public final class OpenAIImageGenerator implements ImageGenerator {
+public final class OpenAICompatibleImageGenerator implements ImageGenerator {
 
     private final OpenAICompatibleProvider provider;
     private final String model;
     private final JsonHttp http;
 
-    public OpenAIImageGenerator(OpenAICompatibleProvider provider, String apiKey, String model) {
+    public OpenAICompatibleImageGenerator(OpenAICompatibleProvider provider, String apiKey, String model) {
         this(provider, apiKey, model, HttpOptions.defaults());
     }
 
-    public OpenAIImageGenerator(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
+    public OpenAICompatibleImageGenerator(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
         java.util.Map<String, String> headers = JsonHttp.bearer(apiKey);

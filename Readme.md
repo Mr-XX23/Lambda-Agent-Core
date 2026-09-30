@@ -315,7 +315,7 @@ agent.run("s1", "What does this receipt total?", Media.fromFile(Path.of("receipt
 agent.run("s1", "Summarize the call", Media.fromFile(Path.of("call.mp3")));        // Gemini, Mistral Voxtral, ...
 
 Media logo = GeminiMedia.images(key, "gemini-3.1-flash-image").generateImage("A minimalist fox logo");
-Media voice = new OpenAISpeechGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-4o-mini-tts").generateSpeech("Hello!");
+Media voice = new OpenAISpeechGenerator(key, "gpt-4o-mini-tts").generateSpeech("Hello!");
 Media clip = GeminiMedia.videos(key, "veo-3.1-generate-preview").generateVideo(VideoRequest.of("Waves at dusk"));
 
 List<AgentTool> tools = List.of(MediaTools.generateImage(images, Path.of("out")),

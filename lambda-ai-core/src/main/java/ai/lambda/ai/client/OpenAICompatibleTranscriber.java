@@ -15,21 +15,21 @@ import java.util.Objects;
  * with {@code gpt-transcribe} or {@code whisper-1}, and compatible providers such as Mistral.
  *
  * <pre>
- * var stt = new OpenAITranscriber(OpenAICompatibleProvider.OPENAI, key, "gpt-transcribe");
+ * var stt = new OpenAICompatibleTranscriber(OpenAICompatibleProvider.OPENAI, key, "gpt-transcribe");
  * String text = stt.transcribe(Media.fromFile(Path.of("meeting.m4a")), "en");
  * </pre>
  */
-public final class OpenAITranscriber implements Transcriber {
+public final class OpenAICompatibleTranscriber implements Transcriber {
 
     private final OpenAICompatibleProvider provider;
     private final String model;
     private final JsonHttp http;
 
-    public OpenAITranscriber(OpenAICompatibleProvider provider, String apiKey, String model) {
+    public OpenAICompatibleTranscriber(OpenAICompatibleProvider provider, String apiKey, String model) {
         this(provider, apiKey, model, HttpOptions.defaults());
     }
 
-    public OpenAITranscriber(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
+    public OpenAICompatibleTranscriber(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
         Map<String, String> headers = JsonHttp.bearer(apiKey);

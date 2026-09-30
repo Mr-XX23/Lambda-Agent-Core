@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the tool tells the model where; transcription reads audio files from inside a root folder only.
  *
  * <pre>
- * var images = new OpenAIImageGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-image-2");
+ * var images = new OpenAIImageGenerator(key, "gpt-image-2");   // lambda-ai-core-openai
  * List&lt;AgentTool&gt; tools = List.of(MediaTools.generateImage(images, Path.of("out")));
  * </pre>
  */

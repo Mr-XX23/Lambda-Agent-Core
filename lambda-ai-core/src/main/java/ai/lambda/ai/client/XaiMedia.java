@@ -19,7 +19,7 @@ import java.util.Set;
 
 /**
  * xAI speech, transcription and video generation. For xAI images use
- * {@code new OpenAIImageGenerator(OpenAICompatibleProvider.XAI, key, "grok-imagine-image-2.0")}.
+ * {@code new OpenAICompatibleImageGenerator(OpenAICompatibleProvider.XAI, key, "grok-imagine-image-2.0")}.
  *
  * <pre>
  * XaiMedia.speech(key).generateSpeech(SpeechRequest.of("Hello!").withVoice("eve"));

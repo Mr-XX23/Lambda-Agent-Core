@@ -87,7 +87,7 @@ class ProviderPresetsTest {
                 "{\"data\":[{\"b64_json\":\"AQID\",\"mime_type\":\"image/jpeg\"}]}"))) {
             var xai = OpenAICompatibleProvider.XAI.withBaseUrl(server.url() + "/v1");
 
-            Media image = new OpenAIImageGenerator(xai, "k", "grok-imagine-image-2.0", FAST)
+            Media image = new OpenAICompatibleImageGenerator(xai, "k", "grok-imagine-image-2.0", FAST)
                     .generateImages(ImageRequest.of("a fox").withSize("16:9")).get(0);
 
             assertEquals("image/jpeg", image.mimeType());

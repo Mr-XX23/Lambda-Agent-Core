@@ -200,10 +200,14 @@ agent.run("s1", Message.user("What happens in this clip?", Media.fromUrl("https:
   (vLLM, LM Studio, a gateway); `withHeaders(...)` adds headers such as OpenRouter's
   `HTTP-Referer`.
 - Generation: `ImageGenerator` (`OpenAIImageGenerator`, `GeminiMedia.images`,
-  `OpenRouterImageGenerator`), `SpeechGenerator` (`OpenAISpeechGenerator`, `GeminiMedia.speech`,
-  `XaiMedia.speech`, `MistralMedia.speech`), `VideoGenerator` (`GeminiMedia.videos` for Veo,
-  `XaiMedia.videos`; both wait for the background job, up to `VideoRequest.timeout()`), and
-  `Transcriber` (`OpenAITranscriber`, `XaiMedia.transcriber`, `MistralMedia.transcriber`).
+  `OpenRouterImageGenerator`, and `OpenAICompatibleImageGenerator` for xAI),
+  `SpeechGenerator` (`OpenAISpeechGenerator`, `GeminiMedia.speech`, `XaiMedia.speech`,
+  `MistralMedia.speech`), `VideoGenerator` (`GeminiMedia.videos` for Veo, `XaiMedia.videos`; both
+  wait for the background job, up to `VideoRequest.timeout()`), and `Transcriber`
+  (`OpenAITranscriber`, `XaiMedia.transcriber`, `MistralMedia.transcriber`). The OpenAI and Gemini
+  classes live in `lambda-ai-core-openai` and `lambda-ai-core-gemini` and use the official SDKs;
+  the rest are in `lambda-ai-core`, where the `OpenAICompatible…` generators also serve other
+  servers that copy OpenAI's endpoints.
   OpenAI's video API (Sora) and Google's Imagen were shut down by their providers, so they are not
   offered.
 - `MediaTools.generateImage/generateSpeech/generateVideo(generator, outputDir)` and

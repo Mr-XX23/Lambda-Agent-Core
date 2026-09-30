@@ -32,7 +32,7 @@ public final class MistralMedia {
 
     /** Transcription through Mistral's OpenAI-style {@code /audio/transcriptions} endpoint. */
     public static Transcriber transcriber(String apiKey, String model) {
-        return new OpenAITranscriber(OpenAICompatibleProvider.MISTRAL, apiKey, model);
+        return new OpenAICompatibleTranscriber(OpenAICompatibleProvider.MISTRAL, apiKey, model);
     }
 
     /**

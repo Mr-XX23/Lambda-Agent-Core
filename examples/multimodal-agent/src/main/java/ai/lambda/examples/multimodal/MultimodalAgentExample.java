@@ -7,9 +7,8 @@ import ai.lambda.agent.core.AgentTool;
 import ai.lambda.agent.core.InMemorySessionStore;
 import ai.lambda.agent.core.ToolInvocationContext;
 import ai.lambda.agent.prebuilt.MediaTools;
-import ai.lambda.ai.client.GeminiMedia;
-import ai.lambda.ai.client.OpenAICompatibleProvider;
-import ai.lambda.ai.client.OpenAITranscriber;
+import ai.lambda.ai.gemini.GeminiMedia;
+import ai.lambda.ai.openai.OpenAITranscriber;
 import ai.lambda.ai.core.Media;
 import ai.lambda.ai.core.Message;
 import ai.lambda.ai.core.ModelClient;
@@ -52,7 +51,7 @@ public final class MultimodalAgentExample {
         }
         String openai = System.getenv("OPENAI_API_KEY");
         if (openai != null && !openai.isBlank()) {
-            tools.add(MediaTools.transcribeAudio(new OpenAITranscriber(OpenAICompatibleProvider.OPENAI, openai, "gpt-transcribe"), workspace));
+            tools.add(MediaTools.transcribeAudio(new OpenAITranscriber(openai, "gpt-transcribe"), workspace));
         }
 
         var agent = new Agent(new AgentConfig("You are a helpful assistant that can look at, listen to and create media.",

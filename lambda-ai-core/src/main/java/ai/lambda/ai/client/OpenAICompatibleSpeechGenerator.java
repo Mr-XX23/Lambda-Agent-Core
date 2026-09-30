@@ -14,7 +14,7 @@ import java.util.Objects;
  * {@code gpt-4o-mini-tts} or {@code tts-1}.
  *
  * <pre>
- * var tts = new OpenAISpeechGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-4o-mini-tts");
+ * var tts = new OpenAICompatibleSpeechGenerator(OpenAICompatibleProvider.OPENAI, key, "gpt-4o-mini-tts");
  * tts.generateSpeech(SpeechRequest.of("Your order has shipped.").withVoice("coral")
  *         .withInstructions("Speak cheerfully")).saveTo(Path.of("shipped.mp3"));
  * </pre>
@@ -22,7 +22,7 @@ import java.util.Objects;
  * The default voice is {@code alloy} and the default format {@code mp3}; others are
  * {@code wav}, {@code opus}, {@code aac}, {@code flac} and {@code pcm}.
  */
-public final class OpenAISpeechGenerator implements SpeechGenerator {
+public final class OpenAICompatibleSpeechGenerator implements SpeechGenerator {
 
     private static final Map<String, String> MIME_BY_FORMAT = Map.of(
             "mp3", "audio/mpeg", "wav", "audio/wav", "opus", "audio/opus", "aac", "audio/aac",
@@ -32,11 +32,11 @@ public final class OpenAISpeechGenerator implements SpeechGenerator {
     private final String model;
     private final JsonHttp http;
 
-    public OpenAISpeechGenerator(OpenAICompatibleProvider provider, String apiKey, String model) {
+    public OpenAICompatibleSpeechGenerator(OpenAICompatibleProvider provider, String apiKey, String model) {
         this(provider, apiKey, model, HttpOptions.defaults());
     }
 
-    public OpenAISpeechGenerator(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
+    public OpenAICompatibleSpeechGenerator(OpenAICompatibleProvider provider, String apiKey, String model, HttpOptions options) {
         this.provider = Objects.requireNonNull(provider, "provider must not be null");
         this.model = Objects.requireNonNull(model, "model must not be null");
         Map<String, String> headers = JsonHttp.bearer(apiKey);

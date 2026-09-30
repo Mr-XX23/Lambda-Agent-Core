@@ -26,7 +26,6 @@ import com.google.genai.types.FunctionResponse;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GenerateContentResponse;
 import com.google.genai.types.GenerateContentResponseUsageMetadata;
-import com.google.genai.types.HttpRetryOptions;
 import com.google.genai.types.Part;
 import com.google.genai.types.Tool;
 import com.google.genai.types.ToolConfig;
@@ -61,8 +60,6 @@ public final class GeminiModelClient implements ModelClient {
             .of(Modality.IMAGE, Modality.AUDIO, Modality.VIDEO, Modality.DOCUMENT)
             .withMediaUrls(Modality.IMAGE, Modality.AUDIO, Modality.VIDEO, Modality.DOCUMENT);
 
-    private static final List<Integer> RETRYABLE_STATUS = List.of(408, 429, 500, 502, 503, 504);
-
     private final Client client;
     private final String model;
     private final ModelCapabilities capabilities;
@@ -80,7 +77,7 @@ public final class GeminiModelClient implements ModelClient {
      * @param baseUrl another API root, such as a proxy that forwards to Gemini; null for Google's own
      */
     public GeminiModelClient(String apiKey, String model, HttpOptions options, String baseUrl) {
-        this(sdkClient(apiKey, options, baseUrl), model, DEFAULT_CAPABILITIES,
+        this(GeminiClients.create(apiKey, options, baseUrl), model, DEFAULT_CAPABILITIES,
                 (int) Math.min(Integer.MAX_VALUE, options.requestTimeout().toMillis()));
     }
 
@@ -94,18 +91,6 @@ public final class GeminiModelClient implements ModelClient {
         this.model = Objects.requireNonNull(model, "model must not be null");
         this.capabilities = Objects.requireNonNull(capabilities, "capabilities must not be null");
         this.requestTimeoutMillis = requestTimeoutMillis;
-    }
-
-    private static Client sdkClient(String apiKey, HttpOptions options, String baseUrl) {
-        if (apiKey == null || apiKey.isBlank()) throw new IllegalArgumentException("Gemini needs an API key");
-        Objects.requireNonNull(options, "options must not be null");
-        com.google.genai.types.HttpOptions.Builder http = com.google.genai.types.HttpOptions.builder()
-                .retryOptions(HttpRetryOptions.builder()
-                        .attempts(options.maxAttempts())
-                        .initialDelay(options.initialBackoff().toMillis() / 1000.0)
-                        .httpStatusCodes(RETRYABLE_STATUS));
-        if (baseUrl != null) http.baseUrl(baseUrl);
-        return Client.builder().apiKey(apiKey).httpOptions(http.build()).build();
     }
 
     /** A copy with different capabilities, for example for a text-only model. */
